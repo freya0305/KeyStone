@@ -6,30 +6,34 @@ Core workflow:
 3. Get suggestions → accept/reject/modify
 4. Track applications
 """
-import uuid
 import hashlib
+import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+import structlog
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from keystone.models.base import get_db
 from keystone.models.entities import (
-    User,
-    Resume,
-    JobAnalysis,
-    Suggestion,
     Application,
+    ApplicationStatus,
+    JobAnalysis,
+    Resume,
+    Suggestion,
     SubscriptionTier,
+    User,
 )
-from keystone.services.clerk_auth import get_current_user, AuthUser
+from keystone.services.claude_client import get_claude_client
+from keystone.services.clerk_auth import AuthUser, get_current_user
 from keystone.services.content_sanitizer import sanitize_resume_content, validate_before_storage
 from keystone.services.nric_detector import detect_nric
-from keystone.services.claude_client import get_claude_client
 from keystone.core import get_settings
+
+logger = structlog.get_logger()
 
 router = APIRouter(prefix="/job-seeker", tags=["job-seeker"])
 
@@ -255,41 +259,11 @@ async def parse_job(
         parsed = await _parse_job_with_ai(client, settings, text=request.text)
         parsed["parsed_from"] = "text"
 
-
-async def _fetch_url_content(url: str) -> str:
-    """Fetch and extract text content from a job posting URL."""
-    import httpx
-    import re
-
-    # Only allow http/https
-    if not url.startswith(("http://", "https://")):
-        raise ValueError("URL must start with http:// or https://")
-
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-        response = await client.get(url)
-        response.raise_for_status()
-
-        content_type = response.headers.get("content-type", "")
-        if "text/html" in content_type:
-            # Extract text from HTML (simple approach)
-            html = response.text
-            # Remove scripts and styles
-            html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
-            html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL)
-            # Remove HTML tags
-            text = re.sub(r'<[^>]+>', ' ', html)
-            # Collapse whitespace
-            text = re.sub(r'\s+', ' ', text).strip()
-            return text[:10000]  # Limit to 10k chars
-        else:
-            # Return raw text
-            return response.text[:10000]
-
     # Store job analysis
     analysis = JobAnalysis(
         id=uuid.uuid4(),
         user_id=user.job_seeker_id,
-        job_url=request.url,
+        job_url=request.url or None,
         job_parsed_json=parsed,
         company_type=parsed.get("company_type"),
         created_at=datetime.utcnow(),
@@ -307,6 +281,37 @@ async def _fetch_url_content(url: str) -> str:
         seniority=parsed.get("seniority"),
         parsed_from=parsed["parsed_from"],
     )
+
+
+async def _fetch_url_content(url: str) -> str:
+    """Fetch and extract text content from a job posting URL."""
+    import re
+
+    import httpx
+
+    # Only allow http/https
+    if not url.startswith(("http://", "https://")):
+        raise ValueError("URL must start with http:// or https://")
+
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+
+        content_type = response.headers.get("content-type", "")
+        if "text/html" in content_type:
+            # Extract text from HTML (simple approach)
+            html = response.text
+            # Remove scripts and styles
+            html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL)
+            html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL)
+            # Remove HTML tags
+            text = re.sub(r"<[^>]+>", " ", html)
+            # Collapse whitespace
+            text = re.sub(r"\s+", " ", text).strip()
+            return text[:10000]  # Limit to 10k chars
+        else:
+            # Return raw text
+            return response.text[:10000]
 
 
 async def _parse_job_with_ai(client, settings, text: str) -> dict:
@@ -391,6 +396,8 @@ async def analyze_match(
         raise HTTPException(status_code=404, detail="Job analysis not found")
 
     # Generate match assessment
+    resume_content = resume.parsed_json if resume.parsed_json else {}
+    resume_text = resume_content.get("text", resume_content.get("filename", ""))
     prompt = f"""Analyze this resume against the job requirements.
 Classify each skill/requirement as:
 - strong: user clearly has this
@@ -399,7 +406,7 @@ Classify each skill/requirement as:
 - fundamental: user lacks this
 
 Resume:
-[User resume content]
+{resume_text}
 
 Job requirements:
 {job.job_parsed_json}"""
@@ -702,8 +709,3 @@ async def update_application(
         stages=application.stages or [],
         created_at=application.created_at,
     )
-
-
-# Import logger at module level
-import structlog
-logger = structlog.get_logger()
