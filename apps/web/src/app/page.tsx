@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 
 export default function LandingPage() {
-  const [product, setProduct] = useState<"seeker" | "recruiter">("seeker");
+  const [product, setProduct] = useState<"seeker">("seeker");
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -66,10 +66,10 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
-              href={product === "seeker" ? "/app" : "/recruiter"}
+              href="/app"
               className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition shadow-lg shadow-indigo-200 flex items-center justify-center gap-2"
             >
-              {product === "seeker" ? "Job Seeker" : "Recruiter"}
+              Get Started Free
               <ArrowRight className="w-5 h-5" />
             </Link>
             <Link
@@ -85,12 +85,9 @@ export default function LandingPage() {
       {/* Role Selection Cards */}
       <section className="pb-20 px-4">
         <div className="max-w-5xl mx-auto">
-          <div className="grid md:grid-cols-2 gap-8">
+          <div className="grid md:grid-cols-1 gap-8 max-w-2xl mx-auto">
             {/* Job Seeker Card */}
-            <button
-              onClick={() => setProduct("seeker")}
-              className="group bg-white rounded-2xl p-8 border-2 border-gray-200 hover:border-indigo-300 transition text-left hover:shadow-xl hover:-translate-y-1"
-            >
+            <div className="group bg-white rounded-2xl p-8 border-2 border-gray-200 hover:border-indigo-300 transition text-left hover:shadow-xl hover:-translate-y-1">
               <div className="w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition">
                 <Users className="w-7 h-7 text-white" />
               </div>
@@ -110,33 +107,7 @@ export default function LandingPage() {
                   Personalized suggestions
                 </li>
               </ul>
-            </button>
-
-            {/* Recruiter Card */}
-            <button
-              onClick={() => setProduct("recruiter")}
-              className="group bg-white rounded-2xl p-8 border-2 border-gray-200 hover:border-amber-300 transition text-left hover:shadow-xl hover:-translate-y-1"
-            >
-              <div className="w-14 h-14 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition">
-                <FileText className="w-7 h-7 text-white" />
-              </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-3">Recruiter / Headhunter</h3>
-              <p className="text-gray-600 mb-6">AI generates professional job descriptions, multi-role collaboration, streamlined hiring</p>
-              <ul className="space-y-3 text-sm text-gray-600">
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-500" />
-                  AI-generated JD
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-500" />
-                  One-click share links
-                </li>
-                <li className="flex items-center gap-2">
-                  <CheckCircle className="w-5 h-5 text-green-500" />
-                  Team collaboration
-                </li>
-              </ul>
-            </button>
+            </div>
           </div>
         </div>
       </section>
@@ -168,7 +139,7 @@ export default function LandingPage() {
                 <Brain className="w-8 h-8 text-purple-600" />
               </div>
               <h3 className="text-xl font-bold text-gray-900 mb-3">AI-Powered</h3>
-              <p className="text-gray-600">Based on GPT-4o, continuously learning latest hiring trends</p>
+              <p className="text-gray-600">Powered by Claude, continuously learning latest hiring trends</p>
             </div>
           </div>
         </div>
@@ -193,7 +164,7 @@ export default function LandingPage() {
               <ul className="space-y-3 mb-8">
                 <li className="flex items-center gap-3 text-sm text-gray-600">
                   <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                  10 job analyses per month
+                  3 job analyses per month
                 </li>
                 <li className="flex items-center gap-3 text-sm text-gray-600">
                   <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
@@ -209,12 +180,43 @@ export default function LandingPage() {
               </button>
             </div>
 
+            {/* Basic */}
+            <div className="bg-white rounded-2xl p-8 border border-gray-200 hover:-translate-y-2 transition">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Basic</h3>
+              <div className="mb-6">
+                <span className="text-4xl font-bold text-gray-900">SGD 9</span>
+                <span className="text-gray-500">/month</span>
+              </div>
+              <p className="text-gray-600 mb-6">For active job seekers</p>
+              <ul className="space-y-3 mb-8">
+                <li className="flex items-center gap-3 text-sm text-gray-600">
+                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                  20 job analyses per month
+                </li>
+                <li className="flex items-center gap-3 text-sm text-gray-600">
+                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                  Detailed skills analysis
+                </li>
+                <li className="flex items-center gap-3 text-sm text-gray-600">
+                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                  Resume improvement tips
+                </li>
+                <li className="flex items-center gap-3 text-sm text-gray-600">
+                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                  Priority email support
+                </li>
+              </ul>
+              <button className="w-full py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition">
+                Upgrade to Basic
+              </button>
+            </div>
+
             {/* Pro */}
             <div className="bg-white rounded-2xl p-8 border-2 border-indigo-600 relative hover:-translate-y-2 transition">
               <div className="absolute top-0 right-0 bg-indigo-600 text-white text-xs font-semibold px-3 py-1 rounded-bl-lg">Most Popular</div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Pro</h3>
               <div className="mb-6">
-                <span className="text-4xl font-bold text-gray-900">$19</span>
+                <span className="text-4xl font-bold text-gray-900">SGD 12</span>
                 <span className="text-gray-500">/month</span>
               </div>
               <p className="text-gray-600 mb-6">For serious professionals</p>
@@ -238,37 +240,6 @@ export default function LandingPage() {
               </ul>
               <button className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition">
                 Upgrade to Pro
-              </button>
-            </div>
-
-            {/* Team */}
-            <div className="bg-white rounded-2xl p-8 border border-gray-200 hover:-translate-y-2 transition">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Team</h3>
-              <div className="mb-6">
-                <span className="text-4xl font-bold text-gray-900">$49</span>
-                <span className="text-gray-500">/month</span>
-              </div>
-              <p className="text-gray-600 mb-6">For headhunters and hiring teams</p>
-              <ul className="space-y-3 mb-8">
-                <li className="flex items-center gap-3 text-sm text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                  Unlimited JD generation
-                </li>
-                <li className="flex items-center gap-3 text-sm text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                  Team collaboration
-                </li>
-                <li className="flex items-center gap-3 text-sm text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                  Custom templates
-                </li>
-                <li className="flex items-center gap-3 text-sm text-gray-600">
-                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                  API access
-                </li>
-              </ul>
-              <button className="w-full py-3 border-2 border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition">
-                Contact Sales
               </button>
             </div>
           </div>
