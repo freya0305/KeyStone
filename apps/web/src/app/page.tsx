@@ -1,6 +1,11 @@
+"use client"
+
 import Link from "next/link"
+import { useAuth } from "@clerk/nextjs"
 
 export default function HomePage() {
+  const { user } = useAuth()
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
       {/* Header */}
@@ -19,21 +24,37 @@ export default function HomePage() {
             <Link href="/pricing" className="text-sm text-gray-600 hover:text-gray-900">
               Pricing
             </Link>
-            <Link href="/try" className="text-sm text-gray-600 hover:text-gray-900">
-              Try free
-            </Link>
-            <Link
-              href="/sign-in"
-              className="text-sm text-gray-600 hover:text-gray-900"
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/sign-up"
-              className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Get started
-            </Link>
+            {user ? (
+              <>
+                <Link href="/app" className="text-sm text-gray-600 hover:text-gray-900">
+                  Dashboard
+                </Link>
+                <Link
+                  href="/sign-out"
+                  className="text-sm text-gray-600 hover:text-gray-900"
+                >
+                  Sign out
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link href="/try" className="text-sm text-gray-600 hover:text-gray-900">
+                  Try free
+                </Link>
+                <Link
+                  href="/sign-in"
+                  className="text-sm text-gray-600 hover:text-gray-900"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/sign-up"
+                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Get started
+                </Link>
+              </>
+            )}
           </nav>
         </div>
       </header>
@@ -51,17 +72,19 @@ export default function HomePage() {
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link
-            href="/analyse"
+            href={user ? "/app" : "/analyse"}
             className="px-8 py-4 bg-blue-600 text-white text-lg rounded-lg hover:bg-blue-700 transition-colors"
           >
-            Try for free
+            {user ? "Continue to dashboard →" : "Try for free"}
           </Link>
-          <Link
-            href="/recruiter"
-            className="px-8 py-4 bg-white border border-gray-300 text-gray-700 text-lg rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            For recruiters →
-          </Link>
+          {!user && (
+            <Link
+              href="/recruiter"
+              className="px-8 py-4 bg-white border border-gray-300 text-gray-700 text-lg rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              For recruiters →
+            </Link>
+          )}
         </div>
         <p className="mt-4 text-sm text-gray-500">
           Free tier: 3 matches/month • No credit card required

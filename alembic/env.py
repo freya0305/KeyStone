@@ -14,7 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from keystone.models.base import Base
-from keystone.models.entities import *  # Import all models to register them with Base.metadata
+from keystone.models.entities import *  # noqa: F403  # Import all models to register them with Base.metadata
 
 config = context.config
 

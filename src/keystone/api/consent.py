@@ -2,14 +2,13 @@
 
 Endpoints for users to view and manage their consent preferences.
 """
-import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from keystone.models.base import get_db
-from keystone.models.entities import ConsentType, UserConsent
+from keystone.models.entities import ConsentType
 from keystone.services.clerk_auth import get_current_user, AuthUser
 from keystone.services.consent import ConsentService
 

@@ -34,9 +34,24 @@ PAYMENT_FAILED = "invoice.payment_failed"
 PAYMENT_SUCCEEDED = "invoice.payment_succeeded"
 
 # Price ID to tier mapping
+# Pro monthly and annual both map to PRO tier
 PRICE_TO_TIER = {
     "price_pro": SubscriptionTier.PRO,
+    "price_pro_monthly": SubscriptionTier.PRO,
+    "price_pro_annual": SubscriptionTier.PRO,
 }
+
+
+def _get_price_to_tier() -> dict:
+    """Get price-to-tier mapping from settings (supports custom price IDs)."""
+    settings = get_settings()
+    mapping = dict(PRICE_TO_TIER)  # Copy defaults
+    # Allow settings to override/extend price IDs
+    if hasattr(settings, "stripe_price_pro_monthly"):
+        mapping[settings.stripe_price_pro_monthly] = SubscriptionTier.PRO
+    if hasattr(settings, "stripe_price_pro_annual"):
+        mapping[settings.stripe_price_pro_annual] = SubscriptionTier.PRO
+    return mapping
 
 
 def _get_redis() -> redis.Redis:
@@ -109,7 +124,7 @@ async def handle_checkout_completed(event: Event, db: AsyncSession) -> None:
     if session.line_items and session.line_items.data:
         price_id = session.line_items.data[0].price.id
 
-    tier = PRICE_TO_TIER.get(price_id, SubscriptionTier.FREE)
+    tier = _get_price_to_tier().get(price_id, SubscriptionTier.FREE)
 
     # Find and update user
     result = await db.execute(
@@ -157,9 +172,9 @@ async def handle_subscription_deleted(event: Event, db: AsyncSession) -> None:
 async def handle_payment_failed(event: Event, db: AsyncSession) -> None:
     """Handle failed payment.
 
-    Marks user for downgrade to free tier after grace period.
-    For immediate action, downgrade now. Grace period handling can be
-    done via a scheduled job that checks `grace_period_deadline`.
+    Immediately downgrades user to FREE tier. A 3-day grace period
+    cron job can be added later to restore access if payment is updated
+    within the grace window.
     """
     invoice = event.data.object
 
@@ -171,15 +186,17 @@ async def handle_payment_failed(event: Event, db: AsyncSession) -> None:
         currency=invoice.currency,
     )
 
-    # Find user and mark subscription as failed
+    # Find user and downgrade immediately
     result = await db.execute(
         select(User).where(User.stripe_customer_id == invoice.customer)
     )
     user = result.scalar_one_or_none()
     if user:
-        # Set a grace period flag - a cron job would downgrade after 3 days
-        # For now, we log and could set a grace_period_deadline field
-        logger.info("stripe_payment_failed_user_noted", user_id=str(user.id))
+        user.subscription_tier = SubscriptionTier.FREE
+        # Note: stripe_subscription_id is kept so Stripe can still send
+        # future events (e.g., payment retry success)
+        await db.commit()
+        logger.info("stripe_payment_failed_downgraded", user_id=str(user.id))
     else:
         logger.warning("stripe_payment_failed_customer_not_found", customer_id=invoice.customer)
 
@@ -216,7 +233,7 @@ async def handle_subscription_updated(event: Event, db: AsyncSession) -> None:
     if subscription.items and subscription.items.data:
         price_id = subscription.items.data[0].price.id
 
-    tier = PRICE_TO_TIER.get(price_id, SubscriptionTier.FREE)
+    tier = _get_price_to_tier().get(price_id, SubscriptionTier.FREE)
 
     # Find and update user
     result = await db.execute(

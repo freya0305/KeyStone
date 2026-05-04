@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { apiRequest } from '@/lib/api'
+import { trackApplicationCreated } from '@/lib/analytics'
 
 type ApplicationStatus = 'applied' | 'screening' | 'interview' | 'offer' | 'rejected' | 'withdrawn'
 
@@ -54,6 +55,13 @@ export default function NewApplicationPage() {
           applied_at: new Date(form.applied_at).toISOString(),
         },
       })
+
+      // Track application_created
+      trackApplicationCreated({
+        from_download: false,
+        employer: form.company,
+      })
+
       router.push('/app/applications')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create application')

@@ -5,50 +5,75 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 20 14.3% 30.7%; /* Warm stone-800 */
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 20 14.3% 30.7%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --popover-foreground: 20 14.3% 30.7%;
+    /* Brand Primary: #1E7A8C */
+    --primary: 189 47% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 30 6.7% 96.5%; /* Warm stone-50 */
+    --secondary-foreground: 20 14.3% 30.7%;
+    --muted: 30 6.7% 96.5%;
+    --muted-foreground: 20 8.5% 45.1%; /* Stone-500 */
+    --accent: 30 6.7% 96.5%;
+    --accent-foreground: 20 14.3% 30.7%;
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 30 5.9% 90.4%; /* Stone-200 */
+    --input: 30 5.9% 90.4%;
+    --ring: 189 47% 32%;
     --radius: 0.5rem;
+
+    /* Match Level Colors */
+    --match-strong: #1F8F5F;
+    --match-strong-tint: #E6F4EE;
+    --match-transferable: #C68A1A;
+    --match-transferable-tint: #FBF3DF;
+    --match-addressable: #D97338;
+    --match-addressable-tint: #FCEBDD;
+    --match-fundamental: #8B4A8B;
+    --match-fundamental-tint: #F2E6F2;
+
+    /* Motion Tokens */
+    --motion-instant: 80ms;
+    --motion-fast: 160ms;
+    --motion-base: 240ms;
+    --motion-slow: 360ms;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --background: 20 14.3% 8.9%; /* Stone-950 */
+    --foreground: 30 6.7% 96.5%; /* Warm stone-50 */
+    --card: 20 14.3% 11%; /* Stone-900 */
+    --card-foreground: 30 6.7% 96.5%;
+    --popover: 20 14.3% 11%;
+    --popover-foreground: 30 6.7% 96.5%;
+    /* Brand Primary: #1E7A8C in dark mode - lighter variant for contrast */
+    --primary: 189 47% 45%;
+    --primary-foreground: 20 14.3% 8.9%;
+    --secondary: 20 9.8% 17.5%; /* Stone-800 */
+    --secondary-foreground: 30 6.7% 96.5%;
+    --muted: 20 9.8% 17.5%;
+    --muted-foreground: 30 4.7% 65.1%; /* Stone-400 */
+    --accent: 20 9.8% 17.5%;
+    --accent-foreground: 30 6.7% 96.5%;
+    --destructive: 0 62.8% 40.6%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 20 9.8% 20%; /* Stone-800 */
+    --input: 20 9.8% 20%;
+    --ring: 189 47% 45%;
+
     /* Match colors in dark mode */
-    --match-fundamental: #B57FB5;
-    --match-transferable: #E0AD52;
+    --match-strong: #34D399; /* emerald-400 */
+    --match-strong-tint: #064E3B; /* emerald-900 */
+    --match-transferable: #FBBF24; /* amber-400 */
+    --match-transferable-tint: #78350F; /* amber-900 */
+    --match-addressable: #FB923C; /* orange-400 */
+    --match-addressable-tint: #7C2D12; /* orange-900 */
+    --match-fundamental: #C084FC; /* purple-400 */
+    --match-fundamental-tint: #581C87; /* purple-900 */
   }
 }
 

@@ -69,7 +69,7 @@ async def create_checkout_session(
 ):
     """Create Stripe Checkout session for Pro subscription.
 
-    Plans: 'monthly' (SGD 12/mo) or 'annual' (SGD 144/yr).
+    Plans: 'monthly' (SGD 19/mo) or 'annual' (SGD 190/yr).
     """
     settings = get_settings()
     client = _get_stripe()
@@ -104,7 +104,7 @@ async def create_checkout_session(
         customer=db_user.stripe_customer_id,
         mode="subscription",
         line_items=[{"price": price_id, "quantity": 1}],
-        success_url=f"{base_url}/app?session_id={{CHECKOUT_SESSION_ID}}",
+        success_url=f"{base_url}/pro/welcome?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{base_url}/pricing",
         metadata={"user_id": str(db_user.id), "plan": plan},
         currency="sgd",
@@ -217,4 +217,4 @@ async def create_trial(
 
     base_url = getattr(settings, "app_base_url", "http://localhost:3000")
 
-    return CheckoutSessionResponse(checkout_url=f"{base_url}/app?trial=activated")
+    return CheckoutSessionResponse(checkout_url=f"{base_url}/pro/welcome?trial=activated")

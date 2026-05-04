@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useUser } from '@clerk/nextjs'
 import { apiRequest } from '@/lib/api'
+import { trackProSubscribed } from '@/lib/analytics'
 
 type Plan = 'monthly' | 'annual'
 
@@ -38,6 +39,10 @@ export default function PricingPage() {
         '/billing/create-checkout-session',
         { method: 'POST', body: { plan } }
       )
+
+      // Track pro_subscribed event
+      trackProSubscribed({ plan })
+
       window.location.href = checkout_url
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start checkout')
@@ -196,12 +201,12 @@ export default function PricingPage() {
             <div className="mb-6">
               {plan === 'monthly' ? (
                 <>
-                  <span className="text-4xl font-bold">SGD 12</span>
+                  <span className="text-4xl font-bold">SGD 19</span>
                   <span className="text-blue-200">/month</span>
                 </>
               ) : (
                 <>
-                  <span className="text-4xl font-bold">SGD 144</span>
+                  <span className="text-4xl font-bold">SGD 190</span>
                   <span className="text-blue-200">/year</span>
                 </>
               )}
@@ -262,7 +267,7 @@ export default function PricingPage() {
                   disabled={loading}
                   className="block w-full py-3 text-center bg-white text-blue-600 font-semibold rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-50"
                 >
-                  {loading ? 'Redirecting...' : `Start Pro — ${plan === 'monthly' ? 'SGD 12/month' : 'SGD 144/year'}`}
+                  {loading ? 'Redirecting...' : `Start Pro — ${plan === 'monthly' ? 'SGD 19/month' : 'SGD 190/year'}`}
                 </button>
                 <button
                   onClick={handleTrial}

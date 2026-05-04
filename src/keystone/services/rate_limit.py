@@ -23,6 +23,7 @@ RATE_LIMITS = {
     "free": {"requests": 60, "window": 60},      # 60/min (guest/unauthenticated)
     "pro": {"requests": 600, "window": 60},      # 600/min
     "jd_generate": {"requests": 10, "window": 60}, # 10 JD generations/min
+    "job_analysis": {"requests": 20, "window": 60}, # 20 job analyses/hour per user/IP
 }
 
 # Cleanup interval (seconds)

@@ -31,7 +31,11 @@ class Settings(BaseSettings):
     # Stripe
     stripe_secret_key: str
     stripe_webhook_secret: str
-    stripe_price_pro: str = "price_pro"
+    stripe_price_pro_monthly: str = "price_pro_monthly"
+    stripe_price_pro_annual: str = "price_pro_annual"
+
+    # App
+    app_base_url: str = "http://localhost:3000"
 
     # Twilio (SMS OTP)
     twilio_account_sid: str = ""
@@ -56,6 +60,9 @@ class Settings(BaseSettings):
     # Cost control
     llm_cost_ceiling_sgd: float = 5.0  # SGD 5/user/month
     llm_cost_warning_threshold: float = 0.8  # 80% before warning
+
+    # Internal API (for admin/cron endpoints)
+    internal_api_key: str = ""
 
 
 @lru_cache

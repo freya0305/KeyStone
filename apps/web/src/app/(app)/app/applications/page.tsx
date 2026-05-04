@@ -6,7 +6,7 @@ import { apiRequest } from '@/lib/api'
 
 interface Application {
   id: string
-  company: string
+  employer: string
   role: string
   status: string
   applied_at: string
@@ -113,7 +113,7 @@ export default function ApplicationsPage() {
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3">
-                  <span className="font-medium text-gray-900 truncate">{app.company}</span>
+                  <span className="font-medium text-gray-900 truncate">{app.employer}</span>
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[app.status.toLowerCase()] || 'bg-gray-100 text-gray-600'}`}>
                     {app.status}
                   </span>

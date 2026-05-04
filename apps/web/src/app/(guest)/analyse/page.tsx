@@ -1,8 +1,19 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
+import { useUser } from "@clerk/nextjs"
 import { DropZone } from "@/components/keystone/DropZone"
-import { apiRequest } from "@/lib/api"
+import { apiRequest, apiDownload } from "@/lib/api"
+import {
+  trackJDAnalysed,
+  trackResumeUploaded,
+  trackSuggestionAccepted,
+  trackSuggestionRejected,
+  trackResumeDownloaded,
+  trackSignupTriggered,
+} from "@/lib/analytics"
+import { getStoredPersona, getSuggestionAcceptedCopy, sanitizeAiOutput } from "@/lib/copy"
+import { useToastStore } from "@/components/ui/toaster"
 
 type AnalysisStep = "jd" | "resume" | "loading" | "results"
 type Mode = "url" | "text"
@@ -47,6 +58,7 @@ interface MatchResult {
 }
 
 export default function AnalysePage() {
+  const { user } = useUser()
   const [step, setStep] = useState<AnalysisStep>("jd")
   const [mode, setMode] = useState<Mode>("url")
   const [jobUrl, setJobUrl] = useState("")
@@ -56,6 +68,8 @@ export default function AnalysePage() {
   const [loadingMessage, setLoadingMessage] = useState("")
   const [matchResult, setMatchResult] = useState<MatchResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [resultsViewCount, setResultsViewCount] = useState(0)
+  const resultsViewCountRef = useRef(0)
 
   // Progress messages for loading screen
   const progressMessages = [
@@ -64,6 +78,17 @@ export default function AnalysePage() {
     { delay: 4000, message: "Comparing with your experience..." },
     { delay: 6000, message: "Generating match suggestions..." },
   ]
+
+  // Track signup_triggered for third_view when results shown to unauthenticated users
+  useEffect(() => {
+    if (step === "results" && !user) {
+      resultsViewCountRef.current += 1
+      setResultsViewCount(resultsViewCountRef.current)
+      if (resultsViewCountRef.current >= 3) {
+        trackSignupTriggered({ trigger: "third_view" })
+      }
+    }
+  }, [step, user])
 
   const handleJdNext = useCallback(() => {
     if (mode === "url" && !jobUrl.trim()) return
@@ -77,6 +102,24 @@ export default function AnalysePage() {
       await startAnalysis(id)
     },
     []
+  )
+
+  const handleUploadSuccess = useCallback(
+    (result: { resumeId?: string; filename?: string; pageCount?: number; wordCount?: number }) => {
+      if (result.resumeId && result.filename) {
+        const fileExt = result.filename.split(".").pop()?.toLowerCase() || "unknown"
+        // nric_detected and ns_present require server-side analysis not available at upload time
+        // persona would come from onboarding state - pass empty for now
+        trackResumeUploaded({
+          user_id: user?.id,
+          file_type: fileExt,
+          nric_detected: false,
+          ns_present: false,
+          persona: "",
+        })
+      }
+    },
+    [user?.id]
   )
 
   const startAnalysis = async (rid: string) => {
@@ -131,6 +174,13 @@ export default function AnalysePage() {
       })
 
       setStep("results")
+
+      // Track jd_analysed event
+      trackJDAnalysed({
+        job_analysis_id: parseRes.job_id,
+        company_type: parseRes.company_type || "unknown",
+        source: mode,
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analysis failed")
       setStep("jd")
@@ -139,11 +189,30 @@ export default function AnalysePage() {
 
   const handleAccept = async (suggestionId: string) => {
     if (!jobId) return
+
+    // Track signup_triggered if user is not logged in (first_accept trigger)
+    if (!user) {
+      trackSignupTriggered({ trigger: "first_accept" })
+    }
+
     try {
+      const suggestion = matchResult?.suggestions.find((s) => s.id === suggestionId)
       await apiRequest(`/job-seeker/suggestions/${suggestionId}/feedback`, {
         method: "POST",
-        body: { action: "accept" },
+        body: { suggestion_id: suggestionId, action: "accept" },
       })
+
+      // Track suggestion_accepted
+      if (suggestion && matchResult) {
+        const positionInList = matchResult.suggestions.findIndex((s) => s.id === suggestionId) + 1
+        trackSuggestionAccepted({
+          suggestion_id: suggestionId,
+          company_type: matchResult.company,
+          match_level: suggestion.match_level,
+          position_in_list: positionInList,
+        })
+      }
+
       // Update local state
       setMatchResult((prev) =>
         prev
@@ -155,6 +224,14 @@ export default function AnalysePage() {
             }
           : null
       )
+
+      // Show persona-specific toast
+      const persona = getStoredPersona()
+      if (persona) {
+        const remainingCount = (matchResult?.suggestions.filter((s) => !s.accepted && s.id !== suggestionId).length ?? 0)
+        const toastMessage = getSuggestionAcceptedCopy(persona, remainingCount)
+        useToastStore.getState().show(toastMessage, "success")
+      }
     } catch {
       // Silent failure - don't block user
     }
@@ -163,10 +240,22 @@ export default function AnalysePage() {
   const handleReject = async (suggestionId: string) => {
     if (!jobId) return
     try {
+      const suggestion = matchResult?.suggestions.find((s) => s.id === suggestionId)
       await apiRequest(`/job-seeker/suggestions/${suggestionId}/feedback`, {
         method: "POST",
-        body: { action: "reject" },
+        body: { suggestion_id: suggestionId, action: "reject" },
       })
+
+      // Track suggestion_rejected
+      if (suggestion && matchResult) {
+        trackSuggestionRejected({
+          suggestion_id: suggestionId,
+          company_type: matchResult.company,
+          match_level: suggestion.match_level,
+          position_in_list: matchResult.suggestions.findIndex((s) => s.id === suggestionId) + 1,
+        })
+      }
+
       setMatchResult((prev) =>
         prev
           ? {
@@ -177,6 +266,39 @@ export default function AnalysePage() {
       )
     } catch {
       // Silent failure
+    }
+  }
+
+  const handleExport = async (format: "pdf" | "docx") => {
+    if (!jobId) return
+
+    // Track signup_triggered if user is not logged in (download trigger)
+    if (!user) {
+      trackSignupTriggered({ trigger: "download" })
+    }
+
+    try {
+      const blob = await apiDownload("/job-seeker/export", {
+        method: "POST",
+        body: { job_analysis_id: jobId, format },
+      })
+
+      // Track resume_downloaded
+      trackResumeDownloaded({
+        job_analysis_id: jobId,
+        format,
+      })
+
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `resume_${matchResult?.role || "export"}.${format}`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch {
+      setError(`Failed to export as ${format.toUpperCase()}`)
     }
   }
 
@@ -310,6 +432,7 @@ export default function AnalysePage() {
 
             <DropZone
               onFile={handleResumeUpload}
+              onUploadSuccess={handleUploadSuccess}
               onText={() => {
                 // For text paste, we'd need a different flow
                 alert("Text paste for resume coming soon")
@@ -373,6 +496,22 @@ export default function AnalysePage() {
                   </div>
                   <div className="text-sm text-gray-600 mt-1">Fundamental</div>
                 </div>
+              </div>
+
+              {/* Export buttons */}
+              <div className="mt-4 pt-4 border-t flex gap-3 justify-end">
+                <button
+                  onClick={() => handleExport("docx")}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                >
+                  <span>Download DOCX</span>
+                </button>
+                <button
+                  onClick={() => handleExport("pdf")}
+                  className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 flex items-center gap-2"
+                >
+                  <span>Download PDF</span>
+                </button>
               </div>
             </div>
 
@@ -469,12 +608,20 @@ function SuggestionCard({
           <div>
             <div className="text-xs font-medium text-gray-500 mb-1">Suggested</div>
             <div className="p-3 bg-brand-50 border-l-2 border-brand-500 rounded-r-lg text-sm">
-              {suggestion.suggested_text}
+              {(() => {
+                const { cleaned } = sanitizeAiOutput(suggestion.suggested_text)
+                return cleaned
+              })()}
             </div>
           </div>
 
           {/* Rationale */}
-          <div className="text-sm text-gray-600">{suggestion.rationale}</div>
+          <div className="text-sm text-gray-600">
+            {suggestion.rationale ? (() => {
+              const { cleaned } = sanitizeAiOutput(suggestion.rationale)
+              return cleaned
+            })() : null}
+          </div>
 
           {/* Actions */}
           <div className="flex gap-2">
@@ -482,13 +629,13 @@ function SuggestionCard({
               onClick={onAccept}
               className="flex-1 py-2 bg-match-strong text-white text-sm rounded-lg hover:bg-match-strong/90"
             >
-              ✓ Accept
+              Accept
             </button>
             <button
               onClick={onReject}
               className="flex-1 py-2 border text-sm rounded-lg hover:bg-gray-50"
             >
-              ✗ Skip
+              Skip
             </button>
           </div>
         </div>

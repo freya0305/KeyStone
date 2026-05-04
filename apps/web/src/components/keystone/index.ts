@@ -1,4 +1,5 @@
 export { MatchChip, MatchLevelDot } from './MatchChip'
+export { MatchBadge, MatchBadgeDot, getMatchLevelLabel } from './MatchBadge'
 export { ProGate, PaywallBanner } from './ProGate'
 export { DropZone, useDropZone } from './DropZone'
 export { BatchUpdateModal } from './BatchUpdateModal'

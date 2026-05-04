@@ -16,12 +16,11 @@ from keystone.models.base import get_db
 from keystone.models.entities import (
     B2BJobDescription,
     B2BVersion,
-    B2BUser,
 )
 from keystone.core import get_settings
 from keystone.services.claude_client import get_claude_client, ClaudeResponse
 from keystone.services.circuit_breaker import CircuitBreakerError
-from keystone.services.clerk_auth import get_current_user, get_current_b2b_user, AuthUser
+from keystone.services.clerk_auth import get_current_b2b_user, AuthUser
 
 router = APIRouter(prefix="/recruiter/jd", tags=["recruiter"])
 

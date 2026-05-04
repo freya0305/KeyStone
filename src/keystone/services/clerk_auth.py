@@ -20,6 +20,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from keystone.core import get_settings
 from keystone.models.base import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 logger = structlog.get_logger()
 

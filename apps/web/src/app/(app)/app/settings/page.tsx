@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { apiRequest } from "@/lib/api"
+import { apiRequest, apiDownload } from "@/lib/api"
 
 const CONSENT_TYPES = [
   {
@@ -59,6 +59,30 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null)
   const [portalLoading, setPortalLoading] = useState(false)
+  const [darkMode, setDarkMode] = useState(false)
+  const [exportLoading, setExportLoading] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+
+  // Load dark mode preference
+  useEffect(() => {
+    const saved = localStorage.getItem('darkMode')
+    if (saved !== null) {
+      setDarkMode(saved === 'true')
+    } else {
+      setDarkMode(window.matchMedia('(prefers-color-scheme: dark)').matches)
+    }
+  }, [])
+
+  // Apply dark mode class to html element
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark')
+      localStorage.setItem('darkMode', 'true')
+    } else {
+      document.documentElement.classList.remove('dark')
+      localStorage.setItem('darkMode', 'false')
+    }
+  }, [darkMode])
 
   useEffect(() => {
     // Load consent state and subscription in parallel
@@ -96,6 +120,40 @@ export default function SettingsPage() {
     } catch {
       setError('Failed to open billing portal')
       setPortalLoading(false)
+    }
+  }
+
+  const exportUserData = async () => {
+    setExportLoading(true)
+    try {
+      const blob = await apiDownload('/users/export', { method: 'GET' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `keystone-data-export-${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('Failed to export data')
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  const deleteAccount = async () => {
+    if (!deleteConfirm) {
+      setDeleteConfirm(true)
+      return
+    }
+    try {
+      await apiRequest('/users/account', { method: 'DELETE' })
+      // Redirect to home after deletion
+      window.location.href = '/'
+    } catch {
+      setError('Failed to delete account')
+      setDeleteConfirm(false)
     }
   }
 
@@ -226,6 +284,83 @@ export default function SettingsPage() {
             </a>
           )}
         </div>
+      </div>
+
+      {/* Appearance */}
+      <div className="bg-white border rounded-xl p-6">
+        <h2 className="font-semibold text-lg mb-4">Appearance</h2>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-medium">Dark mode</div>
+            <div className="text-sm text-gray-500">Toggle dark theme</div>
+          </div>
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              darkMode ? 'bg-blue-600' : 'bg-gray-200'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                darkMode ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
+      {/* Data & Privacy */}
+      <div className="bg-white border rounded-xl p-6">
+        <h2 className="font-semibold text-lg mb-4">Data & Privacy</h2>
+        <p className="text-sm text-gray-600 mb-4">
+          Under PDPA, you have the right to access and export your personal data.
+        </p>
+        <button
+          onClick={exportUserData}
+          disabled={exportLoading}
+          className="px-4 py-2 border border-gray-300 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-50"
+        >
+          {exportLoading ? 'Exporting...' : 'Export all my data'}
+        </button>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="bg-white border border-red-200 rounded-xl p-6">
+        <h2 className="font-semibold text-lg mb-2 text-red-600">Danger Zone</h2>
+        <p className="text-sm text-gray-600 mb-4">
+          Permanently delete your account and all associated data. This action cannot be undone.
+        </p>
+        {deleteConfirm ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-red-600">Are you absolutely sure?</p>
+            <div className="flex gap-2">
+              <button
+                onClick={deleteAccount}
+                className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
+              >
+                Yes, delete my account
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(false)}
+                className="px-4 py-2 border border-gray-300 text-sm rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setDeleteConfirm(true)}
+            className="px-4 py-2 border border-red-300 text-red-600 text-sm rounded-lg hover:bg-red-50"
+          >
+            Delete account
+          </button>
+        )}
+      </div>
+
+      {/* PDPA Footer */}
+      <div className="text-center text-sm text-gray-500">
+        PDPA Compliant · Your data stays in Singapore · You can delete everything anytime
       </div>
     </div>
   )

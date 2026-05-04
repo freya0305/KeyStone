@@ -78,6 +78,8 @@ class User(Base):
     phone_hash = Column(String(64), unique=True, nullable=True)  # SHA256 of phone, for deduplication
     phone_verified = Column(Boolean, default=False)
     phone_verified_at = Column(DateTime, nullable=True)
+    # User persona from onboarding questionnaire
+    persona = Column(String(50), nullable=True)  # fresh_graduate, career_switcher, pmet, employed_exploring
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -246,7 +248,8 @@ class Application(Base):
     suggestion_set_id = Column(UUID(as_uuid=True), ForeignKey("job_analyses.id"), nullable=True)  # links to which suggestions were applied
     employer = Column(String(255), nullable=False)
     role = Column(String(255), nullable=False)
-    applied_date = Column(DateTime, nullable=True)
+    job_url = Column(Text, nullable=True)  # URL of the job posting
+    applied_date = Column(DateTime, nullable=True)  # when user applied to this job
     status = Column(Enum(ApplicationStatus), default=ApplicationStatus.INTERESTED)
     stages = Column(JSON, default=list)  # kept in sync with application_stages table
     final_outcome = Column(String(50), nullable=True)

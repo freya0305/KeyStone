@@ -77,3 +77,50 @@ def validate_content(content: str) -> tuple[bool, str]:
     """
     result = detect_nric(content)
     return (not result.found, result.redacted_content)
+
+
+class NRICDetectedError(ValueError):
+    """Raised when NRIC is detected and must be masked before processing."""
+
+    pass
+
+
+def assert_no_nric(content: str) -> None:
+    """Assert that content contains no NRIC patterns.
+
+    Use at Stage 2 (before Claude API call) to prevent accidental
+    NRIC leakage to external AI services.
+
+    Raises:
+        NRICDetectedError: If any NRIC pattern is found
+
+    Example:
+        >>> assert_no_nric("Normal text with no NRIC")  # passes
+        >>> assert_no_nric("My NRIC is S1234567A")  # raises NRICDetectedError
+    """
+    result = detect_nric(content)
+    if result.found:
+        logger.warning("nric.detected_before_claude", count=result.count)
+        raise NRICDetectedError(
+            f"Detected {result.count} NRIC(s) in content. "
+            "Content must be masked before sending to external AI services."
+        )
+
+
+def mask_nric(content: str) -> str:
+    """Replace all NRIC patterns with redaction marker.
+
+    Use at Stage 1 (before S3 upload) and Stage 3 (sanitize Claude output).
+
+    Args:
+        content: Input text with potential NRICs
+
+    Returns:
+        Text with all NRIC patterns replaced with [NRIC_REDACTED]
+
+    Example:
+        >>> mask_nric("My NRIC is S1234567A")
+        'My NRIC is [NRIC_REDACTED]'
+    """
+    result = detect_nric(content)
+    return result.redacted_content

@@ -1,10 +1,23 @@
 import type { Metadata } from "next"
 import { ClerkProvider } from "@clerk/nextjs"
-import { Inter } from "next/font/google"
+import { Inter, Fraunces } from "next/font/google"
 import { PostHogProvider } from "@/components/PostHogProvider"
+import { Toaster } from "@/components/ui/toaster"
 import "./globals.css"
 
-const inter = Inter({ subsets: ["latin"] })
+// Inter Variable for body text - loaded with CJK subsets
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+})
+
+// Fraunces (Instrument Serif alternative) for headings
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-fraunces",
+  display: "swap",
+})
 
 export const metadata: Metadata = {
   title: "KeyStone - AI Job Seeker Copilot",
@@ -17,10 +30,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="en" className={`${inter.variable} ${fraunces.variable}`}>
+      <body className="font-sans antialiased">
         <ClerkProvider>
           <PostHogProvider>
+            <Toaster />
             {children}
           </PostHogProvider>
         </ClerkProvider>

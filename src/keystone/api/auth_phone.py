@@ -4,13 +4,9 @@ Implements: M1-auth-pdpa.md § M1.3
 - POST /api/auth/phone/send-otp — send 6-digit OTP to SG +65 number
 - POST /api/auth/phone/verify — validate OTP and mark phone verified
 """
-import asyncio
-import hashlib
 import random
 import re
-import time
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
