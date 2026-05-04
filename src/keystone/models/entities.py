@@ -30,9 +30,7 @@ from keystone.models.base import Base
 
 class SubscriptionTier(str, PyEnum):
     FREE = "free"
-    SOLO = "solo"
     PRO = "pro"
-    TEAM = "team"
 
 
 class ApplicationStatus(str, PyEnum):
@@ -72,9 +70,14 @@ class User(Base):
     )
     stripe_customer_id = Column(String(255), unique=True, nullable=True)
     stripe_subscription_id = Column(String(255), nullable=True)
+    # Legacy consent flags (superseded by user_consents table)
     consent_pdpa = Column(Boolean, default=False)
     consent_marketing = Column(Boolean, default=False)
     consent_ai_training = Column(Boolean, default=False)
+    # Phone verification (for SMS OTP anti-abuse)
+    phone_hash = Column(String(64), unique=True, nullable=True)  # SHA256 of phone, for deduplication
+    phone_verified = Column(Boolean, default=False)
+    phone_verified_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -82,6 +85,38 @@ class User(Base):
     resumes = relationship("Resume", back_populates="user", lazy="selectin")
     job_analyses = relationship("JobAnalysis", back_populates="user", lazy="selectin")
     applications = relationship("Application", back_populates="user", lazy="selectin")
+    consents = relationship("UserConsent", back_populates="user", lazy="selectin")
+
+
+class ConsentType(str, PyEnum):
+    """Six-type consent architecture."""
+    REGISTRATION = "registration"  # mandatory for account creation
+    STORAGE = "storage"  # storing resume + application data
+    AI_PROCESSING = "ai_processing"  # sending data to Claude API
+    B2B_SHARING = "b2b_sharing"  # aggregate data with institutional clients
+    OUTCOME_TRACKING = "outcome_tracking"  # storing application outcomes
+    MARKETING = "marketing"  # newsletters + promotional emails
+    AI_TRAINING = "ai_training"  # B2C only: feedback used for model improvement
+
+
+class UserConsent(Base):
+    """Per-user per-type consent state — six-type consent architecture."""
+
+    __tablename__ = "user_consents"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    consent_type = Column(Enum(ConsentType), nullable=False)
+    granted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)  # NULL means currently granted
+
+    # Relationships
+    user = relationship("User", back_populates="consents")
+
+    __table_args__ = (
+        Index("ix_user_consents_user_id", "user_id"),
+        Index("ix_user_consents_user_type", "user_id", "consent_type", unique=True),
+    )
 
 
 class Resume(Base):
@@ -177,6 +212,29 @@ class SuggestionSignal(Base):
     )
 
 
+class ApplicationStage(Base):
+    """Stage events for application tracking — normalized child table."""
+
+    __tablename__ = "application_stages"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    application_id = Column(UUID(as_uuid=True), ForeignKey("applications.id"), nullable=False)
+    stage_type = Column(String(20), nullable=False)  # response|screening|interview|final|offer|rejection|withdrawal
+    round_number = Column(Integer, nullable=True)  # 1-5 for interviews
+    format = Column(String(50), nullable=True)  # email|phone|video|in-person|assessment_centre|panel|technical|case
+    outcome = Column(String(20), nullable=True)  # passed|failed|pending|withdrawn
+    stage_date = Column(DateTime, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    application = relationship("Application", back_populates="stage_events")
+
+    __table_args__ = (
+        Index("ix_application_stages_application_id", "application_id"),
+    )
+
+
 class Application(Base):
     """Job application tracking."""
 
@@ -185,20 +243,25 @@ class Application(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     job_analysis_id = Column(UUID(as_uuid=True), ForeignKey("job_analyses.id"), nullable=True)
+    suggestion_set_id = Column(UUID(as_uuid=True), ForeignKey("job_analyses.id"), nullable=True)  # links to which suggestions were applied
     employer = Column(String(255), nullable=False)
     role = Column(String(255), nullable=False)
     applied_date = Column(DateTime, nullable=True)
     status = Column(Enum(ApplicationStatus), default=ApplicationStatus.INTERESTED)
-    stages = Column(JSON, default=list)  # ["applied", "screening", "interview"]
+    stages = Column(JSON, default=list)  # kept in sync with application_stages table
     final_outcome = Column(String(50), nullable=True)
     source = Column(String(100), nullable=True)
     notes = Column(Text, nullable=True)
+    last_activity_at = Column(DateTime, nullable=True)  # for nudge-eligibility
+    auto_closed_at = Column(DateTime, nullable=True)  # set by auto-close job
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     user = relationship("User", back_populates="applications")
-    job_analysis = relationship("JobAnalysis")
+    job_analysis = relationship("JobAnalysis", foreign_keys=[job_analysis_id])
+    suggestion_set = relationship("JobAnalysis", foreign_keys=[suggestion_set_id])
+    stage_events = relationship("ApplicationStage", back_populates="application", lazy="selectin")
 
     __table_args__ = (
         Index("ix_applications_user_id", "user_id"),
@@ -227,6 +290,7 @@ class B2BTenant(Base):
     users = relationship("B2BUser", back_populates="tenant", lazy="selectin")
     job_descriptions = relationship("B2BJobDescription", back_populates="tenant", lazy="selectin")
     templates = relationship("B2BTemplate", back_populates="tenant", lazy="selectin")
+    aggregate_reports = relationship("B2BAggregateReport", back_populates="tenant", lazy="selectin")
 
 
 class B2BUser(Base):
@@ -350,3 +414,21 @@ class B2BTemplate(Base):
 
     # Relationships
     tenant = relationship("B2BTenant", back_populates="templates")
+
+
+class B2BAggregateReport(Base):
+    """Aggregate analytics reports for B2B tenants.
+
+    Stores pre-computed cohort-level statistics for dashboard display.
+    """
+
+    __tablename__ = "b2b_aggregate_reports"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("b2b_tenants.id"), nullable=False)
+    cohort_period = Column(String(50), nullable=False)  # e.g., "2025-S1", "2025-Q1", "2025"
+    aggregate_stats_json = Column(JSON, nullable=False)  # pre-computed statistics
+    generated_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    tenant = relationship("B2BTenant")

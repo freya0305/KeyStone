@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from keystone.core import get_settings
-from keystone.api import health, webhooks, jd_generator, job_seeker, b2b_onboarding
+from keystone.api import health, webhooks, jd_generator, job_seeker, b2b_onboarding, auth_phone, consent, recruiter, billing
 
 settings = get_settings()
 
@@ -50,6 +50,10 @@ app.include_router(webhooks.router)
 app.include_router(jd_generator.router)
 app.include_router(job_seeker.router)
 app.include_router(b2b_onboarding.router)
+app.include_router(auth_phone.router)
+app.include_router(consent.router)
+app.include_router(recruiter.router)
+app.include_router(billing.router)
 
 
 @app.on_event("startup")

@@ -20,10 +20,8 @@ _rate_limit_store: dict[str, list[float]] = defaultdict(list)
 
 # Rate limits per tier
 RATE_LIMITS = {
-    "free": {"requests": 60, "window": 60},      # 60/min
-    "solo": {"requests": 300, "window": 60},     # 300/min
+    "free": {"requests": 60, "window": 60},      # 60/min (guest/unauthenticated)
     "pro": {"requests": 600, "window": 60},      # 600/min
-    "team": {"requests": 1200, "window": 60},   # 1200/min
     "jd_generate": {"requests": 10, "window": 60}, # 10 JD generations/min
 }
 

@@ -17,12 +17,11 @@ from keystone.models.entities import (
     B2BJobDescription,
     B2BVersion,
     B2BUser,
-    User,
 )
 from keystone.core import get_settings
 from keystone.services.claude_client import get_claude_client, ClaudeResponse
 from keystone.services.circuit_breaker import CircuitBreakerError
-from keystone.services.clerk_auth import get_current_user, AuthUser
+from keystone.services.clerk_auth import get_current_user, get_current_b2b_user, AuthUser
 
 router = APIRouter(prefix="/recruiter/jd", tags=["recruiter"])
 
@@ -81,7 +80,7 @@ Output ONLY the job description content. No preamble or explanation."""
 @router.post("/generate", response_model=JDGenerateResponse)
 async def generate_jd(
     request: JDGenerateRequest,
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(get_current_b2b_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Generate a job description using Claude Haiku."""
@@ -109,27 +108,11 @@ Format with these sections: Overview, Responsibilities, Requirements, Nice to Ha
     except CircuitBreakerError as e:
         raise HTTPException(status_code=503, detail=f"AI service temporarily unavailable: {e}")
 
-    # Get B2B user record from Clerk user ID
-    # First find the internal user by clerk_id, then find B2BUser
-    user_result = await db.execute(
-        select(User).where(User.clerk_id == user.id)
-    )
-    internal_user = user_result.scalar_one_or_none()
-    if not internal_user:
-        raise HTTPException(status_code=403, detail="Recruiter account not found")
-
-    result = await db.execute(
-        select(B2BUser).where(B2BUser.user_id == internal_user.id)
-    )
-    b2b_user = result.scalar_one_or_none()
-    if not b2b_user:
-        raise HTTPException(status_code=403, detail="Recruiter account not found")
-
-    # Save to database
+    # Save to database (tenant_id from authenticated B2B user)
     jd = B2BJobDescription(
         id=uuid.uuid4(),
-        tenant_id=b2b_user.tenant_id,
-        created_by_id=b2b_user.id,
+        tenant_id=user.tenant_id,
+        created_by_id=user.b2b_user_id,
         title=request.title,
         company=request.company,
         company_type=request.company_type,
@@ -160,7 +143,7 @@ Format with these sections: Overview, Responsibilities, Requirements, Nice to Ha
 @router.post("/{jd_id}/versions", response_model=VersionResponse)
 async def save_version(
     jd_id: uuid.UUID,
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(get_current_b2b_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Save current JD content as a new version."""
@@ -171,8 +154,8 @@ async def save_version(
     if not jd:
         raise HTTPException(status_code=404, detail="Job description not found")
 
-    if str(jd.tenant_id) != str(user.tenant_id):
-        raise HTTPException(status_code=403, detail="Access denied")
+    if jd.tenant_id != user.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied to this job description")
 
     # Get next version number
     version_result = await db.execute(
@@ -205,7 +188,7 @@ async def save_version(
 @router.get("/{jd_id}/versions")
 async def list_versions(
     jd_id: uuid.UUID,
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(get_current_b2b_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List all versions for a job description."""
@@ -216,8 +199,8 @@ async def list_versions(
     if not jd:
         raise HTTPException(status_code=404, detail="Job description not found")
 
-    if str(jd.tenant_id) != str(user.tenant_id):
-        raise HTTPException(status_code=403, detail="Access denied")
+    if jd.tenant_id != user.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied to this job description")
 
     result = await db.execute(
         select(B2BVersion)
@@ -241,7 +224,7 @@ async def list_versions(
 async def restore_version(
     jd_id: uuid.UUID,
     version_id: uuid.UUID,
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(get_current_b2b_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Restore JD content from a previous version."""
@@ -262,8 +245,8 @@ async def restore_version(
     if not jd:
         raise HTTPException(status_code=404, detail="Job description not found")
 
-    if str(jd.tenant_id) != str(user.tenant_id):
-        raise HTTPException(status_code=403, detail="Access denied")
+    if jd.tenant_id != user.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied to this job description")
 
     # Save current as a version first
     await save_version(jd_id, user, db)

@@ -85,9 +85,9 @@ An AI-powered resume optimization tool built for Singapore job seekers. Users up
 |------|-------|----------|
 | Guest | Free | Upload + 1 match preview |
 | Free | Free | 3 matches/month, 3 suggestions visible |
-| Pro | SGD 19/mo or SGD 180/yr | Unlimited matches, all suggestions, email reminders |
+| Pro | SGD 12/mo or SGD 144/yr | Unlimited matches, all suggestions, email reminders |
 
-Paid conversion target: 4–6%. Pro gross margin: 84%.
+Paid conversion target: 4–5%. Pro user gross margin: 75%.
 
 ### B2B Tiers
 | Client | Annual Contract |

@@ -31,9 +31,12 @@ class Settings(BaseSettings):
     # Stripe
     stripe_secret_key: str
     stripe_webhook_secret: str
-    stripe_price_solo: str = "price_solo"
     stripe_price_pro: str = "price_pro"
-    stripe_price_team: str = "price_team"
+
+    # Twilio (SMS OTP)
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_phone_number: str = ""
 
     # Auth
     jwt_secret: str

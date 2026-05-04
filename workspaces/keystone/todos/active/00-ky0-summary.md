@@ -37,7 +37,7 @@ KY2 (Recruiter Backend)                              KY3 (Frontend)
 ## Assumptions
 
 - User interviews deferred — feature set based on secondary research
-- Pricing: Solo (free/unlimited), Pro $69/mo, Team $179/mo
+- Pricing: Free (3 matches/month), Pro SGD 12/month (unlimited)
 - Regional expansion deferred (Singapore first)
 - Training data sources documented but not yet integrated
 

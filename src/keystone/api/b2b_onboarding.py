@@ -23,7 +23,7 @@ from keystone.models.entities import (
     AccessLevel,
 )
 from keystone.core import get_settings
-from keystone.services.clerk_auth import get_current_user, AuthUser
+from keystone.services.clerk_auth import get_current_user, get_current_b2b_user, AuthUser
 
 router = APIRouter(prefix="/recruiter/onboarding", tags=["recruiter"])
 
@@ -163,7 +163,7 @@ async def register_tenant(
 @router.post("/invite/generate", response_model=InviteGenerateResponse)
 async def generate_invite(
     request: InviteGenerateRequest,
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(get_current_b2b_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Generate an invite link for a new team member.
@@ -171,9 +171,6 @@ async def generate_invite(
     Only ADMIN users can generate invites.
     """
     settings = get_settings()
-
-    if not user.is_b2b:
-        raise HTTPException(status_code=403, detail="B2B access required")
 
     # Get user's B2B record and tenant
     result = await db.execute(
@@ -300,12 +297,10 @@ async def accept_invite(
 
 @router.get("/tenant/me", response_model=TenantInfoResponse)
 async def get_my_tenant(
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(get_current_b2b_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get current user's tenant info."""
-    if not user.is_b2b:
-        raise HTTPException(status_code=403, detail="B2B access required")
 
     result = await db.execute(
         select(B2BTenant, B2BUser).join(
@@ -330,12 +325,10 @@ async def get_my_tenant(
 @router.put("/tenant/me", response_model=TenantInfoResponse)
 async def update_my_tenant(
     request: TenantUpdateRequest,
-    user: AuthUser = Depends(get_current_user),
+    user: AuthUser = Depends(get_current_b2b_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update current user's tenant info (admin only)."""
-    if not user.is_b2b:
-        raise HTTPException(status_code=403, detail="B2B access required")
 
     result = await db.execute(
         select(B2BTenant, B2BUser).join(

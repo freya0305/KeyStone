@@ -107,6 +107,53 @@
 
 ---
 
+## Verification
+
+**Date**: 2026-05-04
+
+### KY3.1 — Project Setup + Design System ✅
+- `apps/web/package.json` — Next.js 14, shadcn/ui, Tailwind 3.4
+- `tailwind.config.ts` — KeyStone design tokens (blue-600 primary, stone-50 background)
+- `globals.css` — Tailwind base + dark mode CSS vars
+- `src/app/layout.tsx` — Root layout with ClerkProvider
+- All config files present: tsconfig.json, postcss.config.js, next.config.js
+
+### KY3.2 — Navigation + Product Switcher ✅
+- `(app)/layout.tsx` — Job seeker sticky nav with Dashboard, New Application, Applications, Resumes
+- `(recruiter)/layout.tsx` — Recruiter sticky nav with Dashboard, Job Descriptions, Templates (purple theme)
+- Product switcher links between portals (Job Seeker / Recruiter buttons in header)
+- Settings links in both shells
+
+### KY3.3 — Recruiter JD Generator Page ✅
+- `recruiter/jd/page.tsx` — Full form: title, company, company_type, seniority, skills chips
+- Calls `POST /recruiter/jd/generate` via apiRequest
+- Live preview panel with word count
+- Skills suggestions with click-to-add chips
+- Form validation (required fields, Enter to add skills)
+
+### KY3.4 — Recruiter Dashboard + Templates ✅
+- `recruiter/page.tsx` — Dashboard with quick actions and stats cards
+- `recruiter/templates/page.tsx` — Template list with create modal, use/edit actions
+- Templates linked to JD Generator via `?template=` query param
+
+### KY3.5 — Job Seeker Core Pages ✅
+- `app/page.tsx` — Dashboard with quick actions
+- `app/applications/page.tsx` — Application list with filters
+- `app/new/page.tsx` — 3-step new application wizard (URL/text → Company Info → Confirm)
+- `app/settings/page.tsx` — Settings with 6-type PDPA consent toggles
+- `app/resumes/page.tsx` — Resume upload (drag-drop + file input) with privacy note
+
+### Missing pages added (not in original spec but linked from nav) ✅
+- `trust/page.tsx` — PDPA compliance, data storage, NRIC protection, consent details
+- `recruiter/settings/page.tsx` — Company profile, team management, billing, privacy settings
+
+### Notes
+- npm not available in dev environment — run `npm install` and `npm run build` to verify
+- Pricing page with SGD 12/month Pro tier already complete
+- Guest `/try` page already complete with 3-step wizard
+
+---
+
 ## KY3.6 — Mobile Responsive + Polish
 
 **What**: Ensure all pages work on mobile.

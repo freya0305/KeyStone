@@ -8,11 +8,11 @@ Core workflow:
 """
 import hashlib
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -21,16 +21,19 @@ from keystone.models.base import get_db
 from keystone.models.entities import (
     Application,
     ApplicationStatus,
+    ConsentType,
     JobAnalysis,
     Resume,
     Suggestion,
     SubscriptionTier,
     User,
+    UserConsent,
 )
 from keystone.services.claude_client import get_claude_client
 from keystone.services.clerk_auth import AuthUser, get_current_user
 from keystone.services.content_sanitizer import sanitize_resume_content, validate_before_storage
 from keystone.services.nric_detector import detect_nric
+from keystone.services.rate_limit import check_rate_limit
 from keystone.core import get_settings
 
 logger = structlog.get_logger()
@@ -49,6 +52,15 @@ class ResumeUploadResponse(BaseModel):
     sg_flags: dict
     nric_detected: bool
     created_at: datetime
+
+
+class ResumeListResponse(BaseModel):
+    id: uuid.UUID
+    filename: str
+    uploaded_at: datetime
+    page_count: Optional[int] = None
+    word_count: Optional[int] = None
+    analyses_count: int
 
 
 class JobParseRequest(BaseModel):
@@ -121,17 +133,19 @@ class ApplicationUpdateRequest(BaseModel):
 
 @router.post("/resume/upload", response_model=ResumeUploadResponse)
 async def upload_resume(
+    request: Request,
     file: UploadFile = File(...),
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Upload and analyze resume.
 
-    - Extracts text from PDF/DOCX/text
-    - Runs NRIC detection (PDPA compliance)
-    - Stores content hash for caching
-    - Returns SG-specific flags
+    Rate limited per user tier.
     """
+    # Rate limit by user
+    tier_key = user.subscription_tier or "free"
+    check_rate_limit(str(user.job_seeker_id), tier_key)
+
     settings = get_settings()
 
     # Read file content
@@ -197,6 +211,37 @@ async def upload_resume(
     )
 
 
+@router.get("/resumes", response_model=list[ResumeListResponse])
+async def list_resumes(
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all resumes for the current user."""
+    from sqlalchemy import func
+
+    # Get all resumes for user with analysis counts
+    result = await db.execute(
+        select(Resume, func.count(JobAnalysis.id).label("analyses_count"))
+        .outerjoin(JobAnalysis, JobAnalysis.resume_id == Resume.id)
+        .where(Resume.user_id == user.job_seeker_id)
+        .group_by(Resume.id)
+        .order_by(Resume.created_at.desc())
+    )
+    rows = result.all()
+
+    return [
+        ResumeListResponse(
+            id=resume.id,
+            filename=resume.parsed_json.get("filename", "resume.txt") if resume.parsed_json else "resume.txt",
+            uploaded_at=resume.created_at,
+            page_count=resume.parsed_json.get("page_count") if resume.parsed_json else None,
+            word_count=resume.parsed_json.get("word_count") if resume.parsed_json else None,
+            analyses_count=analyses_count,
+        )
+        for resume, analyses_count in rows
+    ]
+
+
 def _extract_sg_flags(content: str) -> dict:
     """Extract Singapore-specific flags from resume content."""
     flags = {
@@ -230,13 +275,19 @@ def _extract_sg_flags(content: str) -> dict:
 @router.post("/job/parse", response_model=JobParseResponse)
 async def parse_job(
     request: JobParseRequest,
+    http_request: Request,
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Parse job posting from URL or text.
 
     Extracts: title, company, company_type, skills, seniority
+    Rate limited per user tier.
     """
+    # Rate limit by user
+    tier_key = user.subscription_tier or "free"
+    check_rate_limit(str(user.job_seeker_id), tier_key)
+
     if not request.url and not request.text:
         raise HTTPException(
             status_code=400,
@@ -370,12 +421,20 @@ Job posting:
 async def analyze_match(
     job_id: uuid.UUID,
     resume_id: uuid.UUID,
+    http_request: Request,
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Analyze resume against job posting - four-level match assessment."""
+    """Analyze resume against job posting - four-level match assessment.
+
+    Rate limited per user tier.
+    """
     from keystone.services.claude_client import ClaudeResponse
     from keystone.services.circuit_breaker import CircuitBreakerError
+
+    # Rate limit by user
+    tier_key = user.subscription_tier or "free"
+    check_rate_limit(str(user.job_seeker_id), tier_key)
 
     client = get_claude_client()
     settings = get_settings()
@@ -709,3 +768,332 @@ async def update_application(
         stages=application.stages or [],
         created_at=application.created_at,
     )
+
+
+# =============================================================================
+# BATCH APPLICATION OPERATIONS (Nudge + No-News)
+# =============================================================================
+
+
+class BatchUpdateItem(BaseModel):
+    id: uuid.UUID
+    status: Optional[ApplicationStatus] = None
+    final_outcome: Optional[str] = None
+
+
+class BatchUpdateRequest(BaseModel):
+    applications: list[BatchUpdateItem]
+
+
+class BatchUpdateResponse(BaseModel):
+    updated: int
+    failed: int
+    errors: list[str]
+
+
+class NudgeEligibleApplicationResponse(BaseModel):
+    id: uuid.UUID
+    employer: str
+    role: str
+    status: ApplicationStatus
+    last_activity_at: Optional[datetime]
+    days_since_activity: int
+    created_at: datetime
+
+
+@router.get("/applications/nudge-eligible", response_model=list[NudgeEligibleApplicationResponse])
+async def get_nudge_eligible(
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    http_request: Request = None,
+    days: int = 14,
+    limit: int = 50,
+):
+    """Get applications eligible for nudge (no activity, still active)."""
+    if http_request:
+        check_rate_limit(get_client_identifier(http_request), "default")
+
+    if not user.job_seeker_id:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    cutoff = datetime.utcnow() - timedelta(days=days)
+
+    result = await db.execute(
+        select(Application).where(
+            Application.user_id == user.job_seeker_id,
+            Application.status.in_([ApplicationStatus.APPLIED, ApplicationStatus.SCREENING, ApplicationStatus.INTERVIEW]),
+            Application.last_activity_at < cutoff,
+            Application.auto_closed_at.is_(None),
+        ).order_by(Application.last_activity_at.asc()).limit(limit)
+    )
+    apps = result.scalars().all()
+
+    return [
+        NudgeEligibleApplicationResponse(
+            id=a.id,
+            employer=a.employer,
+            role=a.role,
+            status=a.status,
+            last_activity_at=a.last_activity_at,
+            days_since_activity=(datetime.utcnow() - a.last_activity_at).days if a.last_activity_at else 999,
+            created_at=a.created_at,
+        )
+        for a in apps
+    ]
+
+
+@router.post("/applications/batch-update", response_model=BatchUpdateResponse)
+async def batch_update_applications(
+    request: BatchUpdateRequest,
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    http_request: Request = None,
+):
+    """Batch update application statuses and outcomes."""
+    if http_request:
+        check_rate_limit(get_client_identifier(http_request), "default")
+
+    if not user.job_seeker_id:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    updated = 0
+    failed = 0
+    errors: list[str] = []
+
+    for item in request.applications:
+        try:
+            result = await db.execute(
+                select(Application).where(
+                    Application.id == item.id,
+                    Application.user_id == user.job_seeker_id,
+                )
+            )
+            app = result.scalar_one_or_none()
+            if not app:
+                failed += 1
+                errors.append(f"Application {item.id} not found")
+                continue
+
+            if item.status is not None:
+                app.status = item.status
+                app.last_activity_at = datetime.utcnow()
+            if item.final_outcome is not None:
+                app.final_outcome = item.final_outcome
+            app.updated_at = datetime.utcnow()
+            updated += 1
+        except Exception as e:
+            failed += 1
+            errors.append(f"Application {item.id}: {str(e)}")
+
+    await db.commit()
+
+    return BatchUpdateResponse(updated=updated, failed=failed, errors=errors)
+
+
+@router.post("/applications/mark-all-no-news")
+async def mark_all_no_news(
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    http_request: Request = None,
+):
+    """Mark all nudge-eligible applications as 'no news' (keep active)."""
+    if http_request:
+        check_rate_limit(get_client_identifier(http_request), "default")
+
+    if not user.job_seeker_id:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    cutoff = datetime.utcnow() - timedelta(days=14)
+
+    result = await db.execute(
+        select(Application).where(
+            Application.user_id == user.job_seeker_id,
+            Application.status.in_([ApplicationStatus.APPLIED, ApplicationStatus.SCREENING, ApplicationStatus.INTERVIEW]),
+            Application.last_activity_at < cutoff,
+            Application.auto_closed_at.is_(None),
+        )
+    )
+    apps = result.scalars().all()
+
+    count = 0
+    for app in apps:
+        app.last_activity_at = datetime.utcnow()
+        count += 1
+
+    await db.commit()
+
+    return {"marked": count}
+
+
+# =============================================================================
+# INTERNAL: AUTO-CLOSE STALE APPLICATIONS
+# =============================================================================
+
+
+@router.post("/internal/auto-close-applications")
+async def auto_close_stale_applications(
+    days_inactive: int = 30,
+    db: AsyncSession = Depends(get_db),
+):
+    """Auto-close applications with no recent activity.
+
+    Closes applications that are in terminal states (offer/rejected/withdrawn)
+    and have had no activity for the specified number of days.
+    Callable by AWS EventBridge cron or similar scheduler.
+    """
+    cutoff = datetime.utcnow() - timedelta(days=days_inactive)
+    terminal_states = [ApplicationStatus.OFFER, ApplicationStatus.REJECTED, ApplicationStatus.WITHDRAWN]
+
+    result = await db.execute(
+        select(Application).where(
+            Application.status.in_(terminal_states),
+            Application.auto_closed_at.is_(None),
+            Application.last_activity_at < cutoff,
+        )
+    )
+    apps = result.scalars().all()
+
+    closed = 0
+    for app in apps:
+        app.auto_closed_at = datetime.utcnow()
+        closed += 1
+
+    await db.commit()
+
+    logger.info("auto_close.run", closed=closed, days_inactive=days_inactive)
+    return {"closed": closed}
+
+
+# =============================================================================
+# ANALYTICS
+# =============================================================================
+
+
+class AnalyticsSummaryResponse(BaseModel):
+    total_applications: int
+    by_status: dict[str, int]
+    nudge_eligible_count: int
+    active_last_30d: int
+    completed_last_30d: int
+
+
+class ProfileCompletenessResponse(BaseModel):
+    resume_uploaded: bool
+    resume_parsed: bool
+    phone_verified: bool
+    stripe_customer: bool
+    consent_complete: bool
+    completeness_percent: int
+
+
+@router.get("/analytics/summary", response_model=AnalyticsSummaryResponse)
+async def get_analytics_summary(
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    http_request: Request = None,
+):
+    """Get application analytics summary for the current user."""
+    if http_request:
+        check_rate_limit(get_client_identifier(http_request), "default")
+
+    if not user.job_seeker_id:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    # Total and by-status counts
+    all_result = await db.execute(
+        select(Application).where(Application.user_id == user.job_seeker_id)
+    )
+    all_apps = all_result.scalars().all()
+    total = len(all_apps)
+    by_status: dict[str, int] = {}
+    for app in all_apps:
+        key = app.status.value if hasattr(app.status, 'value') else str(app.status)
+        by_status[key] = by_status.get(key, 0) + 1
+
+    # Nudge-eligible (no activity 14+ days, still active)
+    cutoff_14 = datetime.utcnow() - timedelta(days=14)
+    nudge_result = await db.execute(
+        select(Application).where(
+            Application.user_id == user.job_seeker_id,
+            Application.status.in_([ApplicationStatus.APPLIED, ApplicationStatus.SCREENING, ApplicationStatus.INTERVIEW]),
+            Application.last_activity_at < cutoff_14,
+            Application.auto_closed_at.is_(None),
+        )
+    )
+    nudge_count = len(nudge_result.scalars().all())
+
+    # Active last 30d (had activity)
+    cutoff_30 = datetime.utcnow() - timedelta(days=30)
+    active_30d = sum(1 for a in all_apps if a.last_activity_at and a.last_activity_at >= cutoff_30)
+
+    # Completed last 30d (final outcome set)
+    completed_30d = sum(1 for a in all_apps if a.final_outcome and a.created_at >= cutoff_30)
+
+    return AnalyticsSummaryResponse(
+        total_applications=total,
+        by_status=by_status,
+        nudge_eligible_count=nudge_count,
+        active_last_30d=active_30d,
+        completed_last_30d=completed_30d,
+    )
+
+
+@router.get("/analytics/completeness", response_model=ProfileCompletenessResponse)
+async def get_profile_completeness(
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    http_request: Request = None,
+):
+    """Get profile completeness score for the current user."""
+    if http_request:
+        check_rate_limit(get_client_identifier(http_request), "default")
+
+    if not user.job_seeker_id:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    # Fetch user record
+    user_result = await db.execute(select(User).where(User.id == user.job_seeker_id))
+    user_record = user_result.scalar_one_or_none()
+
+    # Resume check
+    resume_result = await db.execute(
+        select(Resume).where(Resume.user_id == user.job_seeker_id).limit(1)
+    )
+    resume = resume_result.scalar_one_or_none()
+    resume_uploaded = resume is not None
+    resume_parsed = resume is not None and resume.parsed_json is not None
+
+    # Phone verified
+    phone_verified = user_record.phone_verified if user_record else False
+
+    # Stripe customer
+    stripe_customer = user_record.stripe_customer_id is not None if user_record else False
+
+    # Consent complete (all 4 required consents granted)
+    consent_result = await db.execute(
+        select(UserConsent).where(
+            UserConsent.user_id == user.job_seeker_id,
+            UserConsent.granted_at.isnot(None),
+            UserConsent.revoked_at.is_(None),
+        )
+    )
+    granted_consents = {c.consent_type for c in consent_result.scalars().all()}
+    required_consents = {ConsentType.REGISTRATION, ConsentType.STORAGE, ConsentType.AI_PROCESSING, ConsentType.OUTCOME_TRACKING}
+    consent_complete = required_consents.issubset(granted_consents)
+
+    # Compute percentage
+    fields = [resume_uploaded, resume_parsed, phone_verified, stripe_customer, consent_complete]
+    completeness_percent = int(sum(fields) / len(fields) * 100)
+
+    return ProfileCompletenessResponse(
+        resume_uploaded=resume_uploaded,
+        resume_parsed=resume_parsed,
+        phone_verified=phone_verified,
+        stripe_customer=stripe_customer,
+        consent_complete=consent_complete,
+        completeness_percent=completeness_percent,
+    )
+
+
+# =============================================================================
+# SUGGESTIONS

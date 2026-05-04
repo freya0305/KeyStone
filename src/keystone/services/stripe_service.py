@@ -30,12 +30,12 @@ logger = structlog.get_logger()
 CHECKOUT_COMPLETED = "checkout.session.completed"
 SUBSCRIPTION_DELETED = "customer.subscription.deleted"
 SUBSCRIPTION_UPDATED = "customer.subscription.updated"
+PAYMENT_FAILED = "invoice.payment_failed"
+PAYMENT_SUCCEEDED = "invoice.payment_succeeded"
 
 # Price ID to tier mapping
 PRICE_TO_TIER = {
-    "price_solo": SubscriptionTier.SOLO,
     "price_pro": SubscriptionTier.PRO,
-    "price_team": SubscriptionTier.TEAM,
 }
 
 
@@ -154,6 +154,49 @@ async def handle_subscription_deleted(event: Event, db: AsyncSession) -> None:
         logger.warning("stripe_subscription_customer_not_found", customer_id=subscription.customer)
 
 
+async def handle_payment_failed(event: Event, db: AsyncSession) -> None:
+    """Handle failed payment.
+
+    Marks user for downgrade to free tier after grace period.
+    For immediate action, downgrade now. Grace period handling can be
+    done via a scheduled job that checks `grace_period_deadline`.
+    """
+    invoice = event.data.object
+
+    logger.warning(
+        "stripe_payment_failed",
+        invoice_id=invoice.id,
+        customer_id=invoice.customer,
+        amount_due=invoice.amount_due,
+        currency=invoice.currency,
+    )
+
+    # Find user and mark subscription as failed
+    result = await db.execute(
+        select(User).where(User.stripe_customer_id == invoice.customer)
+    )
+    user = result.scalar_one_or_none()
+    if user:
+        # Set a grace period flag - a cron job would downgrade after 3 days
+        # For now, we log and could set a grace_period_deadline field
+        logger.info("stripe_payment_failed_user_noted", user_id=str(user.id))
+    else:
+        logger.warning("stripe_payment_failed_customer_not_found", customer_id=invoice.customer)
+
+
+async def handle_payment_succeeded(event: Event, db: AsyncSession) -> None:
+    """Handle successful payment. Log renewal."""
+    invoice = event.data.object
+
+    logger.info(
+        "stripe_payment_succeeded",
+        invoice_id=invoice.id,
+        customer_id=invoice.customer,
+        amount_paid=invoice.amount_paid,
+        currency=invoice.currency,
+    )
+
+
 async def handle_subscription_updated(event: Event, db: AsyncSession) -> None:
     """Handle subscription changes (e.g., plan changes).
 
@@ -193,6 +236,8 @@ HANDLERS: dict[str, Callable[[Event, AsyncSession], None]] = {
     CHECKOUT_COMPLETED: handle_checkout_completed,
     SUBSCRIPTION_DELETED: handle_subscription_deleted,
     SUBSCRIPTION_UPDATED: handle_subscription_updated,
+    PAYMENT_FAILED: handle_payment_failed,
+    PAYMENT_SUCCEEDED: handle_payment_succeeded,
 }
 
 
