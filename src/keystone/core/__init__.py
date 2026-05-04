@@ -1,4 +1,5 @@
 """Core configuration and settings."""
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
@@ -36,6 +37,7 @@ class Settings(BaseSettings):
 
     # App
     app_base_url: str = "http://localhost:3000"
+    app_cors_origins: str = ""  # Comma-separated list of allowed origins for production
 
     # Twilio (SMS OTP)
     twilio_account_sid: str = ""
@@ -63,6 +65,24 @@ class Settings(BaseSettings):
 
     # Internal API (for admin/cron endpoints)
     internal_api_key: str = ""
+
+    @model_validator(mode="after")
+    def validate_production_security(self):
+        """Ensure security-critical fields are set in production (debug=False)."""
+        # Handle both bool False and string "false" from env var conversion
+        is_production = self.debug is False or str(self.debug).lower() == "false"
+        if is_production:
+            if not self.internal_api_key:
+                raise ValueError(
+                    "internal_api_key must be set in production (debug=False). "
+                    "Generate a secure key: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+                )
+            if not self.jwt_secret or len(self.jwt_secret) < 32:
+                raise ValueError(
+                    "jwt_secret must be set and at least 32 characters in production. "
+                    "Current value length: " + str(len(self.jwt_secret) if self.jwt_secret else 0)
+                )
+        return self
 
 
 @lru_cache

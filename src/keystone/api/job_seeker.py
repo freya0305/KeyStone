@@ -2626,12 +2626,20 @@ async def auto_close_stale_applications(
     and have had no activity for the specified number of days.
     Callable by AWS EventBridge cron or similar scheduler.
     """
+    from keystone.models.entities import ApplicationStage
+
     cutoff = datetime.utcnow() - timedelta(days=days_inactive)
-    terminal_states = [ApplicationStatus.OFFER, ApplicationStatus.REJECTED, ApplicationStatus.WITHDRAWN]
+    # Non-terminal states that should be auto-closed
+    active_states = [
+        ApplicationStatus.INTERESTED,
+        ApplicationStatus.APPLIED,
+        ApplicationStatus.SCREENING,
+        ApplicationStatus.INTERVIEW,
+    ]
 
     result = await db.execute(
         select(Application).where(
-            Application.status.in_(terminal_states),
+            Application.status.in_(active_states),
             Application.auto_closed_at.is_(None),
             Application.last_activity_at < cutoff,
         )
@@ -2640,7 +2648,32 @@ async def auto_close_stale_applications(
 
     closed = 0
     for app in apps:
+        # Set final outcome and status
+        app.final_outcome = "no_response"
+        app.status = ApplicationStatus.REJECTED  # Map to terminal state
         app.auto_closed_at = datetime.utcnow()
+        app.last_activity_at = datetime.utcnow()
+
+        # Write stage event for analytics
+        stage_event = ApplicationStage(
+            application_id=app.id,
+            stage_type="rejection",
+            format="inferred_no_response",
+            outcome="failed",
+            notes="Auto-closed after 30 days of inactivity",
+        )
+        db.add(stage_event)
+
+        # Also append to stages JSON
+        current_stages = app.stages or []
+        current_stages.append({
+            "stage_type": "rejection",
+            "format": "inferred_no_response",
+            "outcome": "failed",
+            "notes": "Auto-closed after 30 days of inactivity",
+            "stage_date": datetime.utcnow().isoformat(),
+        })
+        app.stages = current_stages
         closed += 1
 
     await db.commit()
@@ -2660,6 +2693,39 @@ class AnalyticsSummaryResponse(BaseModel):
     nudge_eligible_count: int
     active_last_30d: int
     completed_last_30d: int
+
+
+class StagePassRates(BaseModel):
+    response_rate: float | None  # % of applied that got a response
+    screening_rate: float | None  # % of responded that went to screening
+    interview_rate: float | None  # % of screened that went to interview
+    offer_rate: float | None  # % of interviewed that got offer
+
+
+class MatchLevelDistribution(BaseModel):
+    strong_match_applications: int
+    transferable_applications: int
+    addressable_applications: int
+    fundamental_applications: int
+    strong_match_r2_plus_rate: float | None  # % of strong that reached R2+
+
+
+class EnhancedAnalyticsResponse(BaseModel):
+    total_applications: int
+    response_rate: float | None  # Only shown after 5+ apps
+    pass_rates: StagePassRates
+    match_distribution: MatchLevelDistribution
+    by_status: dict[str, int]
+    by_month: dict[str, int]  # applications by month
+
+
+class TrackingCompletenessResponse(BaseModel):
+    score: float  # 0.0 to 1.0
+    tier: str  # neutral|active|strong|complete
+    total_applications: int
+    logged_outcome: int  # applications with final_outcome
+    with_stage_events: int  # applications with stage events
+    percentile_rank: str | None  # e.g., "top_30_percent"
 
 
 class ProfileCompletenessResponse(BaseModel):
@@ -2777,6 +2843,211 @@ async def get_profile_completeness(
         stripe_customer=stripe_customer,
         consent_complete=consent_complete,
         completeness_percent=completeness_percent,
+    )
+
+
+@router.get("/analytics/tracking-completeness", response_model=TrackingCompletenessResponse)
+async def get_tracking_completeness(
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    http_request: Request = None,
+):
+    """Get application tracking completeness score.
+
+    Formula: (applications_with_final_outcome_logged + applications_with_stage_events)
+             / total_applications_created
+    """
+    if http_request:
+        check_rate_limit(get_client_identifier(http_request), "default")
+
+    if not user.job_seeker_id:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    # Get all applications
+    result = await db.execute(
+        select(Application).where(Application.user_id == user.job_seeker_id)
+    )
+    all_apps = result.scalars().all()
+    total = len(all_apps)
+
+    if total == 0:
+        return TrackingCompletenessResponse(
+            score=0.0,
+            tier="neutral",
+            total_applications=0,
+            logged_outcome=0,
+            with_stage_events=0,
+            percentile_rank=None,
+        )
+
+    # Count applications with outcome logged
+    logged_outcome = sum(1 for a in all_apps if a.final_outcome)
+
+    # Count applications with stage events
+    with_stage_events = sum(1 for a in all_apps if a.stages and len(a.stages) > 0)
+
+    # Calculate score
+    tracked = logged_outcome + with_stage_events
+    score = tracked / total if total > 0 else 0.0
+
+    # Determine tier
+    if score >= 1.0:
+        tier = "complete"
+    elif score >= 0.7:
+        tier = "strong"
+    elif score >= 0.4:
+        tier = "active"
+    else:
+        tier = "neutral"
+
+    # Placeholder percentile (would need aggregate data from all users)
+    percentile_rank = None
+    if total >= 10:
+        # Mock percentile for now based on score
+        if score >= 0.8:
+            percentile_rank = "top_20_percent"
+        elif score >= 0.6:
+            percentile_rank = "top_40_percent"
+        elif score >= 0.4:
+            percentile_rank = "top_60_percent"
+        else:
+            percentile_rank = "bottom_40_percent"
+
+    return TrackingCompletenessResponse(
+        score=round(score, 2),
+        tier=tier,
+        total_applications=total,
+        logged_outcome=logged_outcome,
+        with_stage_events=with_stage_events,
+        percentile_rank=percentile_rank,
+    )
+
+
+@router.get("/analytics/enhanced", response_model=EnhancedAnalyticsResponse)
+async def get_enhanced_analytics(
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    http_request: Request = None,
+):
+    """Get enhanced application analytics including response rate and pass rates.
+
+    Response rate and pass rates are only shown after 5+ applications (per spec).
+    """
+    if http_request:
+        check_rate_limit(get_client_identifier(http_request), "default")
+
+    if not user.job_seeker_id:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    # Get all applications
+    result = await db.execute(
+        select(Application).where(Application.user_id == user.job_seeker_id)
+    )
+    all_apps = result.scalars().all()
+    total = len(all_apps)
+
+    # By status
+    by_status: dict[str, int] = {}
+    for app in all_apps:
+        key = app.status.value if hasattr(app.status, 'value') else str(app.status)
+        by_status[key] = by_status.get(key, 0) + 1
+
+    # By month
+    by_month: dict[str, int] = {}
+    for app in all_apps:
+        if app.created_at:
+            month_key = app.created_at.strftime("%Y-%m")
+            by_month[month_key] = by_month.get(month_key, 0) + 1
+
+    # Calculate stage pass rates from stage events
+    # Count apps that have response stage
+    apps_with_response = 0
+    apps_with_screening = 0
+    apps_with_interview = 0
+    apps_with_offer = 0
+
+    for app in all_apps:
+        if app.stages:
+            stage_types = {s.get("stage_type") for s in app.stages if isinstance(s, dict)}
+            if "response" in stage_types:
+                apps_with_response += 1
+            if "screening" in stage_types:
+                apps_with_screening += 1
+            if "interview" in stage_types:
+                apps_with_interview += 1
+            if "offer" in stage_types:
+                apps_with_offer += 1
+
+    # Calculate rates (only if we have enough data)
+    response_rate = None
+    screening_rate = None
+    interview_rate = None
+    offer_rate = None
+
+    if total >= 5:
+        if total > 0:
+            response_rate = round(apps_with_response / total, 3)
+        if apps_with_response > 0:
+            screening_rate = round(apps_with_screening / apps_with_response, 3)
+        if apps_with_screening > 0:
+            interview_rate = round(apps_with_interview / apps_with_screening, 3)
+        if apps_with_interview > 0:
+            offer_rate = round(apps_with_offer / apps_with_interview, 3)
+
+    # Match level distribution (from job_analysis.match_results)
+    strong_count = 0
+    transferable_count = 0
+    addressable_count = 0
+    fundamental_count = 0
+    strong_r2_plus = 0
+
+    for app in all_apps:
+        if app.job_analysis and app.job_analysis.match_results:
+            match_results = app.job_analysis.match_results
+            if isinstance(match_results, dict):
+                match_level = match_results.get("match_level", "unknown")
+            elif isinstance(match_results, list) and len(match_results) > 0:
+                # Handle list format
+                strong_count += sum(1 for m in match_results if m.get("match_level") == "strong")
+                transferable_count += sum(1 for m in match_results if m.get("match_level") == "transferable")
+                addressable_count += sum(1 for m in match_results if m.get("match_level") == "addressable")
+                fundamental_count += sum(1 for m in match_results if m.get("match_level") == "fundamental")
+                continue
+            else:
+                match_level = "unknown"
+
+            if match_level == "strong":
+                strong_count += 1
+                # Check if this app reached R2+ (interview stage)
+                if app.stages and len([s for s in app.stages if s.get("stage_type") == "interview"]) > 0:
+                    strong_r2_plus += 1
+            elif match_level == "transferable":
+                transferable_count += 1
+            elif match_level == "addressable":
+                addressable_count += 1
+            elif match_level == "fundamental":
+                fundamental_count += 1
+
+    strong_r2_rate = round(strong_r2_plus / strong_count, 3) if strong_count > 0 else None
+
+    return EnhancedAnalyticsResponse(
+        total_applications=total,
+        response_rate=response_rate,
+        pass_rates=StagePassRates(
+            response_rate=response_rate,
+            screening_rate=screening_rate,
+            interview_rate=interview_rate,
+            offer_rate=offer_rate,
+        ),
+        match_distribution=MatchLevelDistribution(
+            strong_match_applications=strong_count,
+            transferable_applications=transferable_count,
+            addressable_applications=addressable_count,
+            fundamental_applications=fundamental_count,
+            strong_match_r2_plus_rate=strong_r2_rate,
+        ),
+        by_status=by_status,
+        by_month=by_month,
     )
 
 

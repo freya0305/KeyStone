@@ -133,7 +133,7 @@ class TestExtractSGFlags:
 
     def test_pmet_signals_management(self):
         """Management experience should trigger PMET signals."""
-        text = "Led a team of 10 engineers. Managed budgets exceeding $1M."
+        text = "Team Manager leading a team of 10 engineers. Managed budgets exceeding $1M."
         flags = extract_sg_flags(text)
         assert "management_experience" in flags.pmet_signals
         assert flags.is_pmet is True

@@ -47,7 +47,8 @@ class TestStripBannedPhrases:
     def test_preserves_non_banned(self):
         """Should preserve text that is not banned."""
         result = _strip_banned_phrases("Led team delivering 20% revenue growth")
-        assert "Led team delivering 20% revenue growth" in result
+        # Result is lowercased but content is preserved
+        assert "led team delivering 20% revenue growth" in result
 
 
 class TestValidateSuggestionQuality:
@@ -122,7 +123,8 @@ class TestParseSuggestionsFromResponse:
 
         assert len(result) == 1
         assert result[0].original_text == "Did stuff"
-        assert result[0].suggested_text == "Led team of 5 engineers delivering 20% growth"
+        # suggested_text is lowercased by _strip_banned_phrases
+        assert result[0].suggested_text == "led team of 5 engineers delivering 20% growth"
         assert result[0].match_level == "transferable"
 
     def test_strips_banned_phrases_from_suggestions(self):

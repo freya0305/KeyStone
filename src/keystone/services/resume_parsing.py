@@ -71,6 +71,7 @@ class SGFlags:
     has_nric: bool
     has_photo: bool
     ns_quality: Optional[str]  # "full", "partial", "not_mentioned"
+    ns_status: Optional[str]  # "completed", "ongoing", "not_applicable", "unknown"
     education_tier: Optional[str]  # "local_university", "polytechnic", "ite", "international", "unknown"
     pmet_signals: list[str]  # e.g., ["management_experience", "professional_title", "high_salary_expectation"]
     is_pmet: bool
@@ -304,6 +305,7 @@ def extract_sg_flags(text: str) -> SGFlags:
         has_nric=has_nric,
         has_photo=has_photo,
         ns_quality=ns_quality,
+        ns_status=ns_status,
         education_tier=education_tier,
         pmet_signals=pmet_signals,
         is_pmet=is_pmet,

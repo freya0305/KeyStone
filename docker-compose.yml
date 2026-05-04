@@ -1,11 +1,16 @@
 version: "3.9"
 
 services:
+  # ---- Backend API ----
   api:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: keystone_api
     ports:
       - "8000:8000"
     environment:
+      - DEBUG=false
       - DATABASE_URL=postgresql+asyncpg://keystone:keystone@db:5432/keystone
       - REDIS_URL=redis://cache:6379/0
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
@@ -17,40 +22,117 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - S3_BUCKET=${S3_BUCKET}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - APP_CORS_ORIGINS=${APP_CORS_ORIGINS}
     depends_on:
       db:
         condition: service_healthy
       cache:
         condition: service_healthy
-    command: uvicorn keystone.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn keystone.main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2g
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
+  # ---- Frontend Web ----
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: keystone_web
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
+      - NEXT_PUBLIC_APP_URL=${APP_URL:-http://localhost:3000}
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1g
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # ---- PostgreSQL ----
   db:
     image: postgres:16-alpine
+    container_name: keystone_db
     environment:
       POSTGRES_USER: keystone
       POSTGRES_PASSWORD: keystone
       POSTGRES_DB: keystone
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U keystone"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1g
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
 
+  # ---- Redis ----
   cache:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
+    container_name: keystone_cache
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 768m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:
