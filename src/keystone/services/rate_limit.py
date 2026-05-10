@@ -63,11 +63,11 @@ def check_rate_limit(identifier: str, limit_type: str = "default") -> None:
     now = time.time()
     entries = _rate_limit_store[identifier]
 
-    # Get limit config
-    if limit_type == "jd_generate":
-        limit_config = RATE_LIMITS["jd_generate"]
+    # Get limit config - use tier from RATE_LIMITS if available, else fall back to "free"
+    if limit_type in RATE_LIMITS:
+        limit_config = RATE_LIMITS[limit_type]
     else:
-        limit_config = RATE_LIMITS["free"]  # Default for anonymous
+        limit_config = RATE_LIMITS["free"]  # Default for unknown tiers
 
     max_requests = limit_config["requests"]
     window = limit_config["window"]
