@@ -15,7 +15,8 @@ import structlog
 
 from keystone.core import get_settings
 from keystone.models.base import get_db
-from keystone.services.consent import hash_phone
+from keystone.services.consent import hash_phone, ConsentService
+from keystone.models.entities import ConsentType
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,7 +62,10 @@ class SendOtpResponse(BaseModel):
 
 class VerifyOtpRequest(BaseModel):
     phone: str  # +65XXXXXXXX
-    otp: str  # 6-digit code
+    otp: str = ""  # 6-digit code (optional if clerk_verified=true)
+    consent_given: bool = False  # STORAGE consent explicit acknowledgement
+    ai_consents: bool = False  # AI_PROCESSING + AI_TRAINING collected at sign-up
+    clerk_verified: bool = False  # Set to true when Clerk handled phone verification
 
 
 class VerifyOtpResponse(BaseModel):
@@ -148,65 +152,71 @@ async def verify_otp(
     db: AsyncSession = Depends(get_db),
     current_user: AuthUser = Depends(get_current_user),
 ):
-    """Verify OTP and mark phone as verified on user record."""
+    """Verify OTP and mark phone as verified on user record.
+
+    When clerk_verified=true, OTP verification is skipped (Clerk handled SMS verification).
+    """
     phone = req.phone.strip()
     otp = req.otp.strip()
 
     if not _validate_sg_phone(phone):
         raise HTTPException(status_code=400, detail="Invalid phone number format")
 
-    if len(otp) != OTP_LENGTH or not otp.isdigit():
-        raise HTTPException(status_code=400, detail="Invalid OTP format")
-
     phone_hash = hash_phone(phone)
     r = _get_redis()
+    user_id = current_user.job_seeker_id
 
-    # Check lockout
-    lockout_key = f"otp:lockout:{phone_hash}"
-    if r.exists(lockout_key):
-        raise HTTPException(
-            status_code=429,
-            detail="Phone locked due to too many failed attempts.",
-        )
+    # OTP verification only required when Clerk hasn't verified
+    if not req.clerk_verified:
+        if len(otp) != OTP_LENGTH or not otp.isdigit():
+            raise HTTPException(status_code=400, detail="Invalid OTP format")
 
-    # Get stored OTP
-    otp_key = f"otp:code:{phone_hash}"
-    stored_otp = r.get(otp_key)
-
-    if not stored_otp:
-        raise HTTPException(status_code=400, detail="OTP expired or not requested")
-
-    # Check attempt count
-    attempts_key = f"otp:attempts:{phone_hash}"
-    attempts = int(r.get(attempts_key) or "0")
-
-    # Constant-time comparison to prevent timing attacks
-    if not _constant_time_compare(otp, stored_otp):
-        attempts += 1
-        r.setex(attempts_key, OTP_TTL_SECONDS, str(attempts))
-
-        if attempts >= OTP_MAX_ATTEMPTS:
-            r.setex(lockout_key, OTP_LOCKOUT_SECONDS, "1")
-            r.delete(otp_key)
-            r.delete(attempts_key)
-            logger.warning("otp.locked", phone_hash=phone_hash[:8], attempts=attempts)
+        # Check lockout
+        lockout_key = f"otp:lockout:{phone_hash}"
+        if r.exists(lockout_key):
             raise HTTPException(
                 status_code=429,
-                detail="Too many failed attempts. Phone locked for 10 minutes.",
+                detail="Phone locked due to too many failed attempts.",
             )
 
-        logger.warning("otp.wrong_attempt", phone_hash=phone_hash[:8], attempt=attempts)
-        raise HTTPException(status_code=400, detail="Invalid OTP")
+        # Get stored OTP
+        otp_key = f"otp:code:{phone_hash}"
+        stored_otp = r.get(otp_key)
 
-    # OTP correct — clear all OTP keys
-    r.delete(otp_key)
-    r.delete(attempts_key)
+        if not stored_otp:
+            raise HTTPException(status_code=400, detail="OTP expired or not requested")
+
+        # Check attempt count
+        attempts_key = f"otp:attempts:{phone_hash}"
+        attempts = int(r.get(attempts_key) or "0")
+
+        # Constant-time comparison to prevent timing attacks
+        if not _constant_time_compare(otp, stored_otp):
+            attempts += 1
+            r.setex(attempts_key, OTP_TTL_SECONDS, str(attempts))
+
+            if attempts >= OTP_MAX_ATTEMPTS:
+                r.setex(lockout_key, OTP_LOCKOUT_SECONDS, "1")
+                r.delete(otp_key)
+                r.delete(attempts_key)
+                logger.warning("otp.locked", phone_hash=phone_hash[:8], attempts=attempts)
+                raise HTTPException(
+                    status_code=429,
+                    detail="Too many failed attempts. Phone locked for 10 minutes.",
+                )
+
+            logger.warning("otp.wrong_attempt", phone_hash=phone_hash[:8], attempt=attempts)
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+
+        # OTP correct — clear all OTP keys
+        r.delete(otp_key)
+        r.delete(attempts_key)
 
     # Check phone hash uniqueness (exclude current user)
     result = await db.execute(
         select(User).where(
             User.phone_hash == phone_hash,
-            User.id != current_user.job_seeker_id,
+            User.id != user_id,
         )
     )
     existing_user = result.scalar_one_or_none()
@@ -218,7 +228,6 @@ async def verify_otp(
         )
 
     # Update user record
-    user_id = current_user.job_seeker_id
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user:
@@ -226,7 +235,20 @@ async def verify_otp(
         user.phone_verified = True
         user.phone_verified_at = datetime.utcnow()
         await db.commit()
-        logger.info("otp.verified", user_id=str(user_id), phone_hash=phone_hash[:8])
+        logger.info("otp.verified", user_id=str(user_id), phone_hash=phone_hash[:8], clerk_verified=req.clerk_verified)
+
+    # Record PDPA consents
+    consent_service = ConsentService(db)
+    # REGISTRATION: implicit - required for account creation
+    await consent_service.grant(user_id, ConsentType.REGISTRATION)
+    # STORAGE: explicit - user must acknowledge during phone verification
+    if req.consent_given:
+        await consent_service.grant(user_id, ConsentType.STORAGE)
+    # AI_PROCESSING + AI_TRAINING: collected at sign-up, stored during verification
+    if req.ai_consents:
+        await consent_service.grant(user_id, ConsentType.AI_PROCESSING)
+        await consent_service.grant(user_id, ConsentType.AI_TRAINING)
+        logger.info("consent.recorded_at_verification", user_id=str(user_id), ai_consents=True)
 
     return VerifyOtpResponse(verified=True, message="Phone verified successfully")
 
