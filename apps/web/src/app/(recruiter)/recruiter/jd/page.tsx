@@ -1,89 +1,117 @@
-"use client"
+'use client';
 
-import { useState } from "react"
-import { apiRequest } from "@/lib/api"
+import { useState } from 'react';
+import { apiRequest } from '@/lib/api';
 
 interface JDGenerateRequest {
-  title: string
-  company: string
-  company_type?: "banking" | "fintech" | "startup" | "mnc" | "other"
-  skills: string[]
-  seniority: "junior" | "mid" | "senior" | "lead"
+  title: string;
+  company: string;
+  industry: string;
+  company_type?: 'banking' | 'fintech' | 'startup' | 'mnc' | 'other';
+  skills: string[];
+  seniority: 'junior' | 'mid' | 'senior' | 'lead';
 }
 
 interface JDGenerateResponse {
-  id: string
-  title: string
-  company: string
-  content: string
-  word_count: number
-  generated_at: string
+  id: string;
+  title: string;
+  company: string;
+  content: string;
+  word_count: number;
+  generated_at: string;
 }
 
 const SKILLS_SUGGESTIONS = [
-  "Python", "JavaScript", "TypeScript", "React", "Node.js",
-  "AWS", "Docker", "PostgreSQL", "Machine Learning", "SQL",
-  "Project Management", "Agile", "Communication", "Leadership",
-]
+  'Python',
+  'JavaScript',
+  'TypeScript',
+  'React',
+  'Node.js',
+  'AWS',
+  'Docker',
+  'PostgreSQL',
+  'Machine Learning',
+  'SQL',
+  'Project Management',
+  'Agile',
+  'Communication',
+  'Leadership',
+];
 
 const SENIORITY_OPTIONS = [
-  { value: "junior", label: "Junior (0-2 years)" },
-  { value: "mid", label: "Mid-level (2-5 years)" },
-  { value: "senior", label: "Senior (5-8 years)" },
-  { value: "lead", label: "Lead / Manager (8+ years)" },
-]
+  { value: 'junior', label: 'Junior (0-2 years)' },
+  { value: 'mid', label: 'Mid-level (2-5 years)' },
+  { value: 'senior', label: 'Senior (5-8 years)' },
+  { value: 'lead', label: 'Lead / Manager (8+ years)' },
+];
 
 const COMPANY_TYPE_OPTIONS = [
-  { value: "banking", label: "Banking & Finance" },
-  { value: "fintech", label: "Fintech" },
-  { value: "startup", label: "Startup" },
-  { value: "mnc", label: "MNC / Large Corp" },
-  { value: "other", label: "Other" },
-]
+  { value: 'banking', label: 'Banking & Finance' },
+  { value: 'fintech', label: 'Fintech' },
+  { value: 'startup', label: 'Startup' },
+  { value: 'mnc', label: 'MNC / Large Corp' },
+  { value: 'other', label: 'Other' },
+];
+
+const INDUSTRIES = [
+  'Finance & Accounting',
+  'Technology & Software',
+  'Healthcare & Medical',
+  'Engineering & Manufacturing',
+  'Marketing & Communications',
+  'Sales & Business Development',
+  'Human Resources',
+  'Operations & Logistics',
+  'Legal & Compliance',
+  'Education & Training',
+  'Consulting',
+  'Other',
+];
 
 export default function JDGeneratorPage() {
   const [form, setForm] = useState<JDGenerateRequest>({
-    title: "",
-    company: "",
+    title: '',
+    company: '',
+    industry: '',
     company_type: undefined,
     skills: [],
-    seniority: "mid",
-  })
-  const [skillInput, setSkillInput] = useState("")
-  const [result, setResult] = useState<JDGenerateResponse | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+    seniority: 'mid',
+  });
+  const [skillInput, setSkillInput] = useState('');
+  const [result, setResult] = useState<JDGenerateResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const addSkill = (skill: string) => {
-    const trimmed = skill.trim()
+    const trimmed = skill.trim();
     if (trimmed && !form.skills.includes(trimmed) && form.skills.length < 20) {
-      setForm(f => ({ ...f, skills: [...f.skills, trimmed] }))
-      setSkillInput("")
+      setForm((f) => ({ ...f, skills: [...f.skills, trimmed] }));
+      setSkillInput('');
     }
-  }
+  };
 
   const removeSkill = (skill: string) => {
-    setForm(f => ({ ...f, skills: f.skills.filter(s => s !== skill) }))
-  }
+    setForm((f) => ({ ...f, skills: f.skills.filter((s) => s !== skill) }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setResult(null)
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setResult(null);
 
     try {
-      const response = await apiRequest<JDGenerateResponse>("/recruiter/jd/generate", {
-        method: "POST",
+      const response = await apiRequest<JDGenerateResponse>('/recruiter/jd/generate', {
+        method: 'POST',
         body: form,
-      })
-      setResult(response)
+      });
+      setResult(response);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to generate JD")
+      setError(err instanceof Error ? err.message : 'Failed to generate JD');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -96,61 +124,76 @@ export default function JDGeneratorPage() {
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-6 bg-white border rounded-xl p-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Job Title *
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Job Title *</label>
             <input
               type="text"
               required
               value={form.title}
-              onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               placeholder="e.g. Senior Software Engineer"
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Company Name *
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Company Name *</label>
             <input
               type="text"
               required
               value={form.company}
-              onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, company: e.target.value }))}
               placeholder="e.g. DBS Bank"
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Company Type
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Industry *</label>
             <select
-              value={form.company_type || ""}
-              onChange={e => setForm(f => ({ ...f, company_type: e.target.value as any || undefined }))}
+              required
+              value={form.industry}
+              onChange={(e) => setForm((f) => ({ ...f, industry: e.target.value }))}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
             >
-              <option value="">Select type...</option>
-              {COMPANY_TYPE_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option value="">Select Industry</option>
+              {INDUSTRIES.map((ind) => (
+                <option key={ind} value={ind}>
+                  {ind}
+                </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Seniority *
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Company Type</label>
+            <select
+              value={form.company_type || ''}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, company_type: (e.target.value as any) || undefined }))
+              }
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+            >
+              <option value="">Select type...</option>
+              {COMPANY_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Seniority *</label>
             <select
               required
               value={form.seniority}
-              onChange={e => setForm(f => ({ ...f, seniority: e.target.value as any }))}
+              onChange={(e) => setForm((f) => ({ ...f, seniority: e.target.value as any }))}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
             >
-              {SENIORITY_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              {SENIORITY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
               ))}
             </select>
           </div>
@@ -160,13 +203,19 @@ export default function JDGeneratorPage() {
               Required Skills * (1-20)
             </label>
             <div className="flex gap-2 mb-2 flex-wrap">
-              {form.skills.map(skill => (
+              {form.skills.map((skill) => (
                 <span
                   key={skill}
                   className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded text-sm"
                 >
                   {skill}
-                  <button type="button" onClick={() => removeSkill(skill)} className="hover:text-purple-900">×</button>
+                  <button
+                    type="button"
+                    onClick={() => removeSkill(skill)}
+                    className="hover:text-purple-900"
+                  >
+                    ×
+                  </button>
                 </span>
               ))}
             </div>
@@ -174,11 +223,11 @@ export default function JDGeneratorPage() {
               <input
                 type="text"
                 value={skillInput}
-                onChange={e => setSkillInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === "Enter") {
-                    e.preventDefault()
-                    addSkill(skillInput)
+                onChange={(e) => setSkillInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addSkill(skillInput);
                   }
                 }}
                 placeholder="Type a skill and press Enter"
@@ -193,16 +242,18 @@ export default function JDGeneratorPage() {
               </button>
             </div>
             <div className="mt-2 flex flex-wrap gap-1">
-              {SKILLS_SUGGESTIONS.filter(s => !form.skills.includes(s)).slice(0, 8).map(skill => (
-                <button
-                  key={skill}
-                  type="button"
-                  onClick={() => addSkill(skill)}
-                  className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
-                >
-                  + {skill}
-                </button>
-              ))}
+              {SKILLS_SUGGESTIONS.filter((s) => !form.skills.includes(s))
+                .slice(0, 8)
+                .map((skill) => (
+                  <button
+                    key={skill}
+                    type="button"
+                    onClick={() => addSkill(skill)}
+                    className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                  >
+                    + {skill}
+                  </button>
+                ))}
             </div>
           </div>
 
@@ -214,10 +265,12 @@ export default function JDGeneratorPage() {
 
           <button
             type="submit"
-            disabled={loading || !form.title || !form.company || form.skills.length === 0}
+            disabled={
+              loading || !form.title || !form.company || !form.industry || form.skills.length === 0
+            }
             className="w-full py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {loading ? "Generating..." : "Generate Job Description"}
+            {loading ? 'Generating...' : 'Generate Job Description'}
           </button>
         </form>
 
@@ -255,5 +308,5 @@ export default function JDGeneratorPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

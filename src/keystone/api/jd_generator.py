@@ -61,6 +61,7 @@ class SkillsLookupResponse(BaseModel):
 class JDGenerateRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     company: str = Field(..., min_length=1, max_length=255)
+    industry: str = Field(..., min_length=1, max_length=255)
     company_type: Optional[str] = Field(None, pattern="^(banking|fintech|startup|mnc|other)$")
     skills: Optional[list[str]] = Field(None, max_length=20)
     seniority: str = Field(..., pattern="^(junior|mid|senior|lead)$")
@@ -346,10 +347,27 @@ async def generate_jd(
             }
             db_company_type = company_type_map.get(request.company_type)
 
+        # Map frontend industry free-text to DB slug
+        industry_map = {
+            "Finance & Accounting": "banking_finance",
+            "Technology & Software": "technology",
+            "Healthcare & Medical": "healthcare",
+            "Engineering & Manufacturing": "engineering",
+            "Marketing & Communications": "other",
+            "Sales & Business Development": "other",
+            "Human Resources": "other",
+            "Operations & Logistics": "other",
+            "Legal & Compliance": "other",
+            "Education & Training": "education",
+            "Consulting": "consulting",
+            "Other": "other",
+        }
+        db_industry = industry_map.get(request.industry, "other")
+
         skills, total_jds, cold_start_warning, prompt_for_manual_input = await query_skill_frequency(
             db,
             request.title,
-            "technology",  # default industry for skill lookup
+            db_industry,
             request.seniority,
             db_company_type,
         )
@@ -433,7 +451,7 @@ Format with these sections: Overview, Responsibilities, Requirements, Nice to Ha
     generation_log = JDGenerationLog(
         id=uuid.uuid4(),
         input_title=request.title,
-        input_industry="technology",  # default for skill lookup
+        input_industry=request.industry,
         input_seniority=request.seniority,
         input_company_type=request.company_type,
         input_skills_user=request.skills,
