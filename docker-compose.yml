@@ -31,7 +31,13 @@ services:
         condition: service_healthy
     command: uvicorn keystone.main:app --host 0.0.0.0 --port 8000
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -40,7 +46,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
+          cpus: "2"
           memory: 2g
     logging:
       driver: "json-file"
@@ -53,6 +59,9 @@ services:
     build:
       context: ./apps/web
       dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
+        - NEXT_PUBLIC_APP_URL=${APP_URL:-http://localhost:3000}
     container_name: keystone_web
     ports:
       - "3000:3000"
@@ -71,7 +80,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1'
+          cpus: "1"
           memory: 1g
     logging:
       driver: "json-file"
@@ -99,7 +108,7 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1'
+          cpus: "1"
           memory: 1g
     logging:
       driver: "json-file"
@@ -126,13 +135,66 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: "0.5"
           memory: 768m
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+
+  # ---- Celery Worker ----
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: keystone_worker
+    environment:
+      - DEBUG=false
+      - DATABASE_URL=postgresql+asyncpg://keystone:keystone@db:5432/keystone
+      - REDIS_URL=redis://cache:6379/0
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - JWT_SECRET=${JWT_SECRET}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      - CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - S3_BUCKET=${S3_BUCKET}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - APP_CORS_ORIGINS=${APP_CORS_ORIGINS}
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    command: celery -A keystone.workers.celery_app worker --loglevel=info --beat
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "celery",
+          "-A",
+          "keystone.workers.celery_app",
+          "inspect",
+          "active",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
 volumes:
   postgres_data:
