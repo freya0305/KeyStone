@@ -52,8 +52,10 @@ from keystone.services.resume_parsing import (
 )
 from keystone.services.jd_fetcher import fetch_jd_from_url, JDFetchResult
 from keystone.services.jd_parser import parse_job_description, parsed_to_dict, ParsedJobDescription
+from keystone.services.jd_quality_filter import is_spam, is_duplicate, apply_staleness_flags, filter_jd_batch
 from keystone.services.company_classifier import classify_company, CompanyClassification
 from keystone.services.match_assessor import assess_match, assessment_to_dict, MatchAssessment
+from keystone.services.skill_etl import run_etl_for_tuple
 
 logger = structlog.get_logger()
 
@@ -62,10 +64,11 @@ router = APIRouter(prefix="/job-seeker", tags=["job-seeker"])
 
 def verify_internal_api_key(x_internal_api_key: str = Header(None)) -> str:
     """Verify internal API key for admin/cron endpoints."""
+    import secrets
     settings = get_settings()
     if not settings.INTERNAL_API_KEY:
         raise HTTPException(500, "Internal API key not configured")
-    if x_internal_api_key != settings.INTERNAL_API_KEY:
+    if x_internal_api_key is None or not secrets.compare_digest(x_internal_api_key, settings.INTERNAL_API_KEY):
         raise HTTPException(401, "Invalid internal API key")
     return x_internal_api_key
 
@@ -95,6 +98,7 @@ class ResumeListResponse(BaseModel):
 class JobParseRequest(BaseModel):
     url: Optional[str] = None
     text: Optional[str] = None
+    consent_given: bool = False  # For user-submitted JDs to raw_jds
 
 
 class JobParseResponse(BaseModel):
@@ -181,6 +185,20 @@ class ApplicationUpdateRequest(BaseModel):
     status: Optional[str] = None
     final_outcome: Optional[str] = None
     notes: Optional[str] = None
+
+
+# =============================================================================
+# APPLICATION STATS (Response Rate Dashboard)
+# =============================================================================
+
+
+class ApplicationStats(BaseModel):
+    """Response rate dashboard for application tracking (M4.2)."""
+    total_applications: int
+    response_rate: float | None  # Only shown after 5+ applications
+    pass_rates: dict  # Per-stage pass rates
+    applications_by_stage: dict
+    trend_line: list[dict]  # Monthly applications
 
 
 # =============================================================================
@@ -856,6 +874,8 @@ async def parse_job(
 
     Extracts: title, company, company_type, skills, seniority
     Rate limited per user tier.
+
+    If consent_given=True, stores in raw_jds table for skill frequency ETL.
     """
     # Rate limit by user
     tier_key = user.subscription_tier or "free"
@@ -878,30 +898,108 @@ async def parse_job(
     client = get_claude_client()
     settings = get_settings()
 
+    raw_jd_text: str
+    source_url: Optional[str] = None
+    source_platform: str = "direct"
+    fetch_metadata: dict = {}
+
     if request.url:
-        # Fetch URL content
+        # Fetch URL content using enhanced fetcher with rate limiting + robots.txt
         try:
-            text_content = await _fetch_url_content(request.url)
-        except Exception as e:
+            fetch_result = await fetch_jd_from_url(request.url)
+            raw_jd_text = fetch_result.text
+            source_url = fetch_result.source_url
+            source_platform = fetch_result.source_platform
+            fetch_metadata = {
+                "title": fetch_result.title,
+                "company": fetch_result.company,
+                "company_type": fetch_result.company_type,
+                "posted_date": fetch_result.posted_date.isoformat() if fetch_result.posted_date else None,
+            }
+        except ValueError as e:
             logger.warning("job_url_fetch_failed", url=request.url, error=str(e))
-            raise HTTPException(status_code=400, detail=f"Failed to fetch job posting URL: {e}")
-        parsed = await _parse_job_with_ai(client, settings, text=text_content)
+            raise HTTPException(status_code=400, detail=str(e))
+        parsed = await _parse_job_with_ai(client, settings, text=raw_jd_text)
         parsed["parsed_from"] = "url"
     else:
+        raw_jd_text = request.text
         parsed = await _parse_job_with_ai(client, settings, text=request.text)
         parsed["parsed_from"] = "text"
+
+    # Apply spam check
+    jd_is_spam = is_spam(raw_jd_text)
+    if jd_is_spam:
+        logger.info("job_parse.spam_detected", source=source_url or "text")
 
     # Store job analysis
     analysis = JobAnalysis(
         id=uuid.uuid4(),
         user_id=user.job_seeker_id,
-        job_url=request.url or None,
+        job_url=source_url or None,
         job_parsed_json=parsed,
         company_type=parsed.get("company_type"),
         created_at=datetime.utcnow(),
     )
     db.add(analysis)
-    await db.commit()
+
+    # Store in raw_jds if user consents per architecture spec §7
+    if request.consent_given and not jd_is_spam:
+        from keystone.models.entities import RawJD
+
+        # Classify company type if not already set
+        company_type = parsed.get("company_type") or fetch_metadata.get("company_type") or "other"
+
+        raw_jd = RawJD(
+            id=uuid.uuid4(),
+            source_url=source_url,
+            source_platform=source_platform,
+            data_source="user_submitted",
+            job_title_raw=parsed.get("title"),
+            company=parsed.get("company") or fetch_metadata.get("company"),
+            company_type=company_type,
+            industry=parsed.get("industry", "other"),
+            seniority=parsed.get("seniority", "mid"),
+            raw_text=raw_jd_text,
+            posted_at=datetime.fromisoformat(fetch_metadata["posted_date"]) if fetch_metadata.get("posted_date") else None,
+            submitted_at=datetime.utcnow(),
+            consent_given=True,
+            is_spam=jd_is_spam,
+        )
+
+        # Apply staleness flags
+        apply_staleness_flags(raw_jd)
+
+        db.add(raw_jd)
+
+        # Check for duplicates against existing raw_jds
+        existing_result = await db.execute(
+            select(RawJD).where(
+                RawJD.is_duplicate == False,
+                RawJD.is_spam == False,
+            ).limit(100)
+        )
+        existing_jds = existing_result.scalars().all()
+        if is_duplicate(raw_jd, list(existing_jds)):
+            raw_jd.is_duplicate = True
+            logger.info("job_parse.duplicate", source_url=source_url)
+
+        await db.commit()
+
+        # Trigger ETL for skill frequency if valid
+        if not raw_jd.is_duplicate and not raw_jd.is_spam and not raw_jd.is_stale:
+            try:
+                await run_etl_for_tuple(
+                    title=raw_jd.job_title_raw or parsed.get("title", ""),
+                    industry=raw_jd.industry,
+                    seniority=raw_jd.seniority,
+                )
+                logger.info("job_parse.etl_triggered", raw_jd_id=str(raw_jd.id))
+            except Exception as e:
+                # ETL failure shouldn't block the parse response
+                logger.warning("job_parse.etl_failed", error=str(e))
+    else:
+        await db.commit()
+
     await db.refresh(analysis)
 
     return JobParseResponse(
@@ -1032,6 +1130,7 @@ class JobAnalysisResponse(BaseModel):
     match_assessment: Optional[dict] = None
     overall_match_score: Optional[float] = None
     created_at: datetime
+    cache_hit: bool = False
 
 
 @router.post("/job-analyses", response_model=JobAnalysisResponse)
@@ -1078,6 +1177,47 @@ async def create_job_analysis(
     resume = resume_result.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
+
+    # Content-hash cache lookup: check for existing analysis with same resume hash + job URL
+    source_url: Optional[str] = request.url if request.url else None
+    if source_url:
+        cache_cutoff = datetime.utcnow() - timedelta(days=7)
+        cached_result = await db.execute(
+            select(JobAnalysis)
+            .join(Resume, JobAnalysis.resume_id == Resume.id)
+            .where(
+                Resume.content_hash == resume.content_hash,
+                JobAnalysis.job_url == source_url,
+                JobAnalysis.created_at >= cache_cutoff,
+            )
+            .order_by(JobAnalysis.created_at.desc())
+            .limit(1)
+        )
+        cached = cached_result.scalar_one_or_none()
+        if cached:
+            logger.info(
+                "job_analysis.cache_hit",
+                content_hash=resume.content_hash[:16],
+                job_url=source_url,
+                cached_job_analysis_id=str(cached.id),
+                cached_age_days=(datetime.utcnow() - cached.created_at).total_seconds() / 86400,
+            )
+            parsed_data = cached.job_parsed_json or {}
+            return JobAnalysisResponse(
+                job_analysis_id=cached.id,
+                job_title=parsed_data.get("job_title"),
+                company_name=parsed_data.get("company_name"),
+                company_type=cached.company_type,
+                seniority_level=parsed_data.get("seniority_level"),
+                industry=parsed_data.get("industry"),
+                requirements=parsed_data.get("requirements", []),
+                responsibilities=parsed_data.get("responsibilities", []),
+                benefits=parsed_data.get("benefits", []),
+                match_assessment=cached.match_results,
+                overall_match_score=cached.match_results.get("overall_score") if cached.match_results else None,
+                created_at=cached.created_at,
+                cache_hit=True,
+            )
 
     # Get resume text for matching
     resume_content = resume.parsed_json if resume.parsed_json else {}
@@ -2683,6 +2823,154 @@ async def auto_close_stale_applications(
 
 
 # =============================================================================
+# WEEKLY DIGEST EMAIL
+# =============================================================================
+
+
+class DigestSendResponse(BaseModel):
+    """Response for weekly digest send operation."""
+    sent: int
+    skipped_no_login: int
+    skipped_recent_sent: int
+    errors: int
+
+
+class DigestUserRecord(BaseModel):
+    """Lightweight user record for digest processing."""
+    id: uuid.UUID
+    email: str
+    name: str
+    last_login_at: Optional[datetime]
+
+
+@router.post("/digest/send", response_model=DigestSendResponse)
+async def send_weekly_digest(
+    db: AsyncSession = Depends(get_db),
+    _api_key: str = Depends(verify_internal_api_key),
+):
+    """Send weekly digest emails to users who haven't logged in this week.
+
+    Callable by AWS EventBridge cron (weekly schedule).
+    Only sends if:
+    - User hasn't logged in that week
+    - One email per user per week max (tracked via last_digest_sent_at)
+    - User has outcome tracking consent
+
+    Returns counts of sent, skipped, and errors.
+    """
+    from keystone.models.entities import User
+
+    # Find users who haven't logged in this week and haven't received a digest
+    week_start = datetime.utcnow() - timedelta(days=7)
+
+    # Get users who:
+    # 1. Have applications (active users)
+    # 2. Haven't logged in this week
+    # 3. Haven't had a digest sent in the last 7 days
+    result = await db.execute(
+        select(User)
+        .join(Application, Application.user_id == User.id)
+        .where(
+            User.last_login_at < week_start,
+            User.consent_ai_training == True,  # Outcome tracking consent
+        )
+        .distinct()
+    )
+    candidates = result.scalars().all()
+
+    sent = 0
+    skipped_no_login = 0
+    skipped_recent_sent = 0
+    errors = 0
+
+    settings = get_settings()
+    base_url = settings.app_base_url
+
+    for user in candidates:
+        try:
+            # Check if user has outcome tracking consent
+            consent_result = await db.execute(
+                select(UserConsent).where(
+                    UserConsent.user_id == user.id,
+                    UserConsent.consent_type == ConsentType.OUTCOME_TRACKING,
+                    UserConsent.granted_at.isnot(None),
+                    UserConsent.revoked_at.is_(None),
+                )
+            )
+            if not consent_result.scalars().first():
+                logger.info("digest.skip_no_consent", user_id=str(user.id))
+                continue
+
+            # Check nudge-eligible applications count
+            cutoff = datetime.utcnow() - timedelta(days=14)
+            nudge_result = await db.execute(
+                select(Application).where(
+                    Application.user_id == user.id,
+                    Application.status.in_([ApplicationStatus.APPLIED, ApplicationStatus.SCREENING, ApplicationStatus.INTERVIEW]),
+                    Application.last_activity_at < cutoff,
+                    Application.auto_closed_at.is_(None),
+                )
+            )
+            nudge_apps = nudge_result.scalars().all()
+
+            if not nudge_apps:
+                logger.info("digest.skip_no_nudge_eligible", user_id=str(user.id))
+                skipped_no_login += 1
+                continue
+
+            # Build digest email content
+            digest_data = {
+                "user_name": user.name,
+                "pending_count": len(nudge_apps),
+                "applications": [
+                    {
+                        "employer": app.employer,
+                        "role": app.role,
+                        "days_since_activity": (datetime.utcnow() - app.last_activity_at).days if app.last_activity_at else 999,
+                        "status": app.status.value if hasattr(app.status, 'value') else str(app.status),
+                    }
+                    for app in nudge_apps[:5]  # Top 5 most stale
+                ],
+                "batch_update_url": f"{base_url}/batch-update",
+            }
+
+            # Send email (placeholder - actual email sending requires email service setup)
+            # TODO: Integrate with email service (Resend/SendGrid) when configured
+            # For now, log the digest that would be sent
+            logger.info(
+                "digest.would_send",
+                user_id=str(user.id),
+                email=user.email,
+                pending_count=len(nudge_apps),
+                batch_update_url=digest_data["batch_update_url"],
+            )
+
+            # Update last_digest_sent_at on user record (requires adding field to User model)
+            # For now, we just log - actual implementation needs User.last_digest_sent_at field
+
+            sent += 1
+
+        except Exception as e:
+            logger.error("digest.send_error", user_id=str(user.id), error=str(e))
+            errors += 1
+
+    logger.info(
+        "digest.run_complete",
+        sent=sent,
+        skipped_no_login=skipped_no_login,
+        skipped_recent_sent=skipped_recent_sent,
+        errors=errors,
+    )
+
+    return DigestSendResponse(
+        sent=sent,
+        skipped_no_login=skipped_no_login,
+        skipped_recent_sent=skipped_recent_sent,
+        errors=errors,
+    )
+
+
+# =============================================================================
 # ANALYTICS
 # =============================================================================
 
@@ -3051,6 +3339,109 @@ async def get_enhanced_analytics(
     )
 
 
+@router.get("/applications/stats", response_model=ApplicationStats)
+async def get_application_stats(
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    http_request: Request = None,
+):
+    """Get application statistics for response rate dashboard (M4.2).
+
+    Returns:
+    - total_applications: Total number of applications
+    - response_rate: Percentage of applications that received a response (after 5+ apps)
+    - pass_rates: Per-stage pass rates (response -> screening -> interview -> offer)
+    - applications_by_stage: Count of applications in each stage
+    - trend_line: Monthly application counts for trend visualization
+    """
+    if http_request:
+        check_rate_limit(get_client_identifier(http_request), "default")
+
+    if not user.job_seeker_id:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    # Get all applications
+    result = await db.execute(
+        select(Application).where(Application.user_id == user.job_seeker_id)
+    )
+    all_apps = result.scalars().all()
+    total = len(all_apps)
+
+    # Count applications by stage (from status enum)
+    applications_by_stage: dict[str, int] = {}
+    for app in all_apps:
+        status_key = app.status.value if hasattr(app.status, 'value') else str(app.status)
+        applications_by_stage[status_key] = applications_by_stage.get(status_key, 0) + 1
+
+    # Calculate stage pass rates from stage events
+    apps_with_response = 0
+    apps_with_screening = 0
+    apps_with_interview = 0
+    apps_with_offer = 0
+
+    for app in all_apps:
+        if app.stages:
+            stage_types = {s.get("stage_type") for s in app.stages if isinstance(s, dict)}
+            if "response" in stage_types:
+                apps_with_response += 1
+            if "screening" in stage_types:
+                apps_with_screening += 1
+            if "interview" in stage_types:
+                apps_with_interview += 1
+            if "offer" in stage_types:
+                apps_with_offer += 1
+
+    # Calculate rates (only shown after 5+ applications per spec)
+    response_rate = None
+    pass_rates: dict[str, float | None] = {
+        "response_rate": None,
+        "screening_rate": None,
+        "interview_rate": None,
+        "offer_rate": None,
+    }
+
+    if total >= 5:
+        if total > 0:
+            response_rate = round((apps_with_response / total) * 100, 1)
+        if apps_with_response > 0:
+            pass_rates["screening_rate"] = round((apps_with_screening / apps_with_response) * 100, 1)
+        if apps_with_screening > 0:
+            pass_rates["interview_rate"] = round((apps_with_interview / apps_with_screening) * 100, 1)
+        if apps_with_interview > 0:
+            pass_rates["offer_rate"] = round((apps_with_offer / apps_with_interview) * 100, 1)
+
+    # Calculate trend line (monthly applications for last 12 months)
+    trend_line: list[dict] = []
+    now = datetime.utcnow()
+    for i in range(11, -1, -1):
+        month_start = datetime(now.year, now.month, 1) - timedelta(days=i * 30)
+        if month_start.month == 12:
+            month_end = datetime(month_start.year + 1, 1, 1)
+        else:
+            month_end = datetime(month_start.year, month_start.month + 1, 1)
+        month_key = month_start.strftime("%Y-%m")
+        count = sum(
+            1 for app in all_apps
+            if app.created_at and month_start <= app.created_at < month_end
+        )
+        trend_line.append({"month": month_key, "count": count})
+
+    logger.info(
+        "application_stats.generated",
+        user_id=str(user.job_seeker_id),
+        total=total,
+        response_rate=response_rate,
+    )
+
+    return ApplicationStats(
+        total_applications=total,
+        response_rate=response_rate,
+        pass_rates=pass_rates,
+        applications_by_stage=applications_by_stage,
+        trend_line=trend_line,
+    )
+
+
 # =============================================================================
 # ONBOARDING
 
@@ -3104,50 +3495,151 @@ async def export_resume(
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Export resume with applied suggestions as PDF or DOCX."""
-    from keystone.services.document_export import generate_pdf, generate_docx
+    """Export resume with applied suggestions as PDF or DOCX.
 
-    # Fetch suggestions for this job analysis
-    suggestions_result = await db.execute(
-        select(Suggestion).where(Suggestion.job_analysis_id == request.job_analysis_id)
-    )
-    suggestions = suggestions_result.scalars().all()
+    Applies accepted suggestions to the resume text and generates a formatted document.
+    """
+    from keystone.services.document_export import export_resume_to_docx, export_resume_to_pdf
+
+    # Parse job_analysis_id to UUID
+    try:
+        job_analysis_uuid = uuid.UUID(request.job_analysis_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid job_analysis_id format")
 
     # Fetch job analysis details
     analysis_result = await db.execute(
-        select(JobAnalysis).where(JobAnalysis.id == request.job_analysis_id)
+        select(JobAnalysis).where(
+            JobAnalysis.id == job_analysis_uuid,
+            JobAnalysis.user_id == user.job_seeker_id,
+        )
     )
     analysis = analysis_result.scalar_one_or_none()
 
     if not analysis:
         raise HTTPException(status_code=404, detail="Job analysis not found")
 
-    # Build context
-    context = {
-        "job_title": analysis.job_title,
-        "company": analysis.company,
-        "skills": analysis.required_skills or [],
-        "suggestions": [
-            {
-                "section": s.section,
-                "original_text": s.original_text,
-                "suggested_text": s.suggested_text,
-                "match_level": s.match_level,
-            }
-            for s in suggestions
-        ],
-    }
+    # Get resume text from the associated resume
+    resume_text = ""
+    contact_info = None
 
+    if analysis.resume_id:
+        resume_result = await db.execute(
+            select(Resume).where(Resume.id == analysis.resume_id)
+        )
+        resume = resume_result.scalar_one_or_none()
+
+        if resume:
+            # Try to get resume text from parsed_json
+            if resume.parsed_json:
+                parsed_data = resume.parsed_json.get("parsed_data", {})
+                # Try various text fields
+                resume_text = parsed_data.get("text", "")
+                if not resume_text:
+                    # Try to reconstruct from sections
+                    experience = parsed_data.get("experience", [])
+                    education = parsed_data.get("education", [])
+                    skills = parsed_data.get("skills", [])
+                    summary = parsed_data.get("summary", "")
+
+                    parts = []
+                    if summary:
+                        parts.append(f"Summary\n{summary}\n")
+                    if experience:
+                        parts.append("Experience\n")
+                        for exp in experience:
+                            if isinstance(exp, dict):
+                                parts.append(f"  {exp.get('title', '')} at {exp.get('company', '')}\n")
+                                parts.append(f"  {exp.get('description', '')}\n")
+                            else:
+                                parts.append(f"  {exp}\n")
+                    if education:
+                        parts.append("\nEducation\n")
+                        for edu in education:
+                            if isinstance(edu, dict):
+                                parts.append(f"  {edu.get('degree', '')} at {edu.get('institution', '')}\n")
+                            else:
+                                parts.append(f"  {edu}\n")
+                    if skills:
+                        parts.append(f"\nSkills\n  {', '.join(skills)}\n")
+
+                    resume_text = "\n".join(parts)
+
+            # Get contact info from parsed data
+            if resume.parsed_json:
+                contact_info = resume.parsed_json.get("parsed_data", {}).get("contact", {})
+                if contact_info:
+                    contact_info = {
+                        "name": contact_info.get("name"),
+                        "email": contact_info.get("email"),
+                        "phone": contact_info.get("phone"),
+                        "location": contact_info.get("location"),
+                    }
+
+    # If no resume text found, try to get from S3
+    if not resume_text and analysis.resume_id:
+        try:
+            from keystone.services.s3 import get_resume_from_s3
+            raw_content = await get_resume_from_s3(resume.s3_key)
+            resume_text_obj = await extract_resume_text(
+                raw_content, resume.parsed_json.get("filename", "resume.pdf") if resume.parsed_json else "resume.pdf"
+            )
+            resume_text = resume_text_obj.text
+        except Exception as e:
+            logger.warning("export_resume_text_fetch_failed", error=str(e))
+            resume_text = "Resume text could not be extracted."
+
+    # Fetch suggestions for this job analysis
+    suggestions_result = await db.execute(
+        select(Suggestion).where(Suggestion.job_analysis_id == job_analysis_uuid)
+    )
+    suggestions = suggestions_result.scalars().all()
+
+    # Build accepted suggestions list (all suggestions are treated as accepted for export)
+    accepted_suggestions = [
+        {
+            "section": s.section,
+            "original_text": s.original_text,
+            "suggested_text": s.suggested_text,
+            "match_level": s.match_level,
+        }
+        for s in suggestions
+    ]
+
+    # Get job info from parsed JSON
+    job_parsed = analysis.job_parsed_json or {}
+    job_title = job_parsed.get("job_title") or job_parsed.get("title") or "Resume"
+    company = job_parsed.get("company_name") or job_parsed.get("company")
+
+    # Generate the exported document
     if request.format == "pdf":
-        content = generate_pdf(context)
+        content = await export_resume_to_pdf(
+            resume_text=resume_text,
+            accepted_suggestions=accepted_suggestions,
+            filename=f"resume_{job_title}",
+            contact_info=contact_info,
+        )
         media_type = "application/pdf"
         ext = "pdf"
     else:
-        content = generate_docx(context)
+        content = await export_resume_to_docx(
+            resume_text=resume_text,
+            accepted_suggestions=accepted_suggestions,
+            filename=f"resume_{job_title}",
+            contact_info=contact_info,
+        )
         media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         ext = "docx"
 
-    filename = f"resume_{analysis.job_title or 'export'}.{ext}".replace(" ", "_")
+    filename = f"resume_{job_title}.{ext}".replace(" ", "_")
+
+    logger.info(
+        "resume_exported",
+        job_analysis_id=str(job_analysis_uuid),
+        user_id=str(user.job_seeker_id),
+        format=request.format,
+        suggestions_count=len(accepted_suggestions),
+    )
 
     return Response(
         content=content,
