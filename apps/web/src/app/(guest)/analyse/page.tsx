@@ -1,9 +1,9 @@
-"use client"
+'use client';
 
-import { useState, useCallback, useEffect, useRef } from "react"
-import { useUser } from "@clerk/nextjs"
-import { DropZone } from "@/components/keystone/DropZone"
-import { apiRequest, apiDownload } from "@/lib/api"
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useUser } from '@clerk/nextjs';
+import { DropZone } from '@/components/keystone/DropZone';
+import { apiRequest, apiDownload } from '@/lib/api';
 import {
   trackJDAnalysed,
   trackResumeUploaded,
@@ -11,103 +11,100 @@ import {
   trackSuggestionRejected,
   trackResumeDownloaded,
   trackSignupTriggered,
-} from "@/lib/analytics"
-import { getStoredPersona, getSuggestionAcceptedCopy, sanitizeAiOutput } from "@/lib/copy"
-import { useToastStore } from "@/components/ui/toaster"
+} from '@/lib/analytics';
+import { getStoredPersona, getSuggestionAcceptedCopy, sanitizeAiOutput } from '@/lib/copy';
+import { useToastStore } from '@/components/ui/toaster';
 
-type AnalysisStep = "jd" | "resume" | "loading" | "results"
-type Mode = "url" | "text"
+type AnalysisStep = 'jd' | 'resume' | 'loading' | 'results';
+type Mode = 'url' | 'text';
 
 interface JobParseResponse {
-  job_id: string
-  title: string | null
-  company: string | null
-  company_type: string | null
-  skills: string[]
-  seniority: string | null
-  parsed_from: string
+  job_id: string;
+  title: string | null;
+  company: string | null;
+  company_type: string | null;
+  skills: string[];
+  seniority: string | null;
+  parsed_from: string;
 }
 
 interface MatchAssessmentResponse {
-  job_analysis_id: string
-  match_levels: Record<string, "strong" | "transferable" | "addressable" | "fundamental">
-  overall_score: number
-  created_at: string
+  job_analysis_id: string;
+  match_levels: Record<string, 'strong' | 'transferable' | 'addressable' | 'fundamental'>;
+  overall_score: number;
+  created_at: string;
 }
 
 interface Suggestion {
-  id: string
-  section: string
-  original_text: string
-  suggested_text: string
-  rationale: string | null
-  match_level: string
-  created_at: string
+  id: string;
+  section: string;
+  original_text: string;
+  suggested_text: string;
+  rationale: string | null;
+  match_level: string;
+  created_at: string;
 }
 
 interface MatchResult {
-  company: string
-  role: string
+  company: string;
+  role: string;
   match_summary: {
-    strong: number
-    transferable: number
-    addressable: number
-    fundamental: number
-  }
-  suggestions: Suggestion[]
+    strong: number;
+    transferable: number;
+    addressable: number;
+    fundamental: number;
+  };
+  suggestions: Suggestion[];
 }
 
 export default function AnalysePage() {
-  const { user } = useUser()
-  const [step, setStep] = useState<AnalysisStep>("jd")
-  const [mode, setMode] = useState<Mode>("url")
-  const [jobUrl, setJobUrl] = useState("")
-  const [jobText, setJobText] = useState("")
-  const [resumeId, setResumeId] = useState<string | null>(null)
-  const [jobId, setJobId] = useState<string | null>(null)
-  const [loadingMessage, setLoadingMessage] = useState("")
-  const [matchResult, setMatchResult] = useState<MatchResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [resultsViewCount, setResultsViewCount] = useState(0)
-  const resultsViewCountRef = useRef(0)
+  const { user } = useUser();
+  const [step, setStep] = useState<AnalysisStep>('jd');
+  const [mode, setMode] = useState<Mode>('url');
+  const [jobUrl, setJobUrl] = useState('');
+  const [jobText, setJobText] = useState('');
+  const [resumeId, setResumeId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [loadingMessage, setLoadingMessage] = useState('');
+  const [matchResult, setMatchResult] = useState<MatchResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [resultsViewCount, setResultsViewCount] = useState(0);
+  const resultsViewCountRef = useRef(0);
 
   // Progress messages for loading screen
   const progressMessages = [
-    { delay: 0, message: "Parsing job description..." },
-    { delay: 2000, message: "Identifying key requirements..." },
-    { delay: 4000, message: "Comparing with your experience..." },
-    { delay: 6000, message: "Generating match suggestions..." },
-  ]
+    { delay: 0, message: 'Parsing job description...' },
+    { delay: 2000, message: 'Identifying key requirements...' },
+    { delay: 4000, message: 'Comparing with your experience...' },
+    { delay: 6000, message: 'Generating match suggestions...' },
+  ];
 
   // Track signup_triggered for third_view when results shown to unauthenticated users
   useEffect(() => {
-    if (step === "results" && !user) {
-      resultsViewCountRef.current += 1
-      setResultsViewCount(resultsViewCountRef.current)
+    if (step === 'results' && !user) {
+      resultsViewCountRef.current += 1;
+      setResultsViewCount(resultsViewCountRef.current);
       if (resultsViewCountRef.current >= 3) {
-        trackSignupTriggered({ trigger: "third_view" })
+        trackSignupTriggered({ trigger: 'third_view' });
       }
     }
-  }, [step, user])
+  }, [step, user]);
 
   const handleJdNext = useCallback(() => {
-    if (mode === "url" && !jobUrl.trim()) return
-    if (mode === "text" && !jobText.trim()) return
-    setStep("resume")
-  }, [mode, jobUrl, jobText])
+    if (mode === 'url' && !jobUrl.trim()) return;
+    if (mode === 'text' && !jobText.trim()) return;
+    setStep('resume');
+  }, [mode, jobUrl, jobText]);
 
-  const handleResumeUpload = useCallback(
-    async (file: File, id: string) => {
-      setResumeId(id)
-      await startAnalysis(id)
-    },
-    []
-  )
+  const handleResumeUpload = useCallback(async (file: File, id: string) => {
+    setResumeId(id);
+    await startAnalysis(id);
+  }, []);
 
   const handleUploadSuccess = useCallback(
     (result: { resumeId?: string; filename?: string; pageCount?: number; wordCount?: number }) => {
       if (result.resumeId && result.filename) {
-        const fileExt = result.filename.split(".").pop()?.toLowerCase() || "unknown"
+        const fileExt = result.filename.split('.').pop()?.toLowerCase() || 'unknown';
         // nric_detected and ns_present require server-side analysis not available at upload time
         // persona would come from onboarding state - pass empty for now
         trackResumeUploaded({
@@ -115,102 +112,102 @@ export default function AnalysePage() {
           file_type: fileExt,
           nric_detected: false,
           ns_present: false,
-          persona: "",
-        })
+          persona: '',
+        });
       }
     },
     [user?.id]
-  )
+  );
 
   const startAnalysis = async (rid: string) => {
-    setStep("loading")
-    setLoadingMessage(progressMessages[0].message)
+    setStep('loading');
+    setLoadingMessage(progressMessages[0].message);
 
     // Cycle through progress messages
     progressMessages.forEach(({ delay, message }) => {
-      setTimeout(() => setLoadingMessage(message), delay)
-    })
+      setTimeout(() => setLoadingMessage(message), delay);
+    });
 
     try {
       // Step 1: Parse job description (URL or text)
-      setLoadingMessage(progressMessages[0].message)
-      const jdData = mode === "url" ? { url: jobUrl } : { text: jobText }
-      const parseRes = await apiRequest<JobParseResponse>("/job-seeker/job/parse", {
-        method: "POST",
+      setLoadingMessage(progressMessages[0].message);
+      const jdData = mode === 'url' ? { url: jobUrl } : { text: jobText };
+      const parseRes = await apiRequest<JobParseResponse>('/job-seeker/job/parse', {
+        method: 'POST',
         body: jdData,
-      })
+      });
 
-      setJobId(parseRes.job_id)
+      setJobId(parseRes.job_id);
 
       // Step 2: Analyze match between resume and job
-      setLoadingMessage(progressMessages[1].message)
+      setLoadingMessage(progressMessages[1].message);
       await apiRequest<MatchAssessmentResponse>(`/job-seeker/job/${parseRes.job_id}/analyze`, {
-        method: "POST",
+        method: 'POST',
         body: { resume_id: rid },
-      })
+      });
 
       // Step 3: Get suggestions
-      setLoadingMessage(progressMessages[2].message)
-      const suggestions = await apiRequest<Suggestion[]>("/job-seeker/suggestions", {
-        method: "POST",
+      setLoadingMessage(progressMessages[2].message);
+      const suggestions = await apiRequest<Suggestion[]>('/job-seeker/suggestions', {
+        method: 'POST',
         body: { job_analysis_id: parseRes.job_id },
-      })
+      });
 
       // Build match result from parse response and suggestions
       const matchLevels = suggestions.reduce(
         (acc, s) => {
-          const level = s.match_level as keyof typeof acc
-          if (level in acc) acc[level]++
-          return acc
+          const level = s.match_level as keyof typeof acc;
+          if (level in acc) acc[level]++;
+          return acc;
         },
         { strong: 0, transferable: 0, addressable: 0, fundamental: 0 } as Record<string, number>
-      )
+      );
 
       setMatchResult({
-        company: parseRes.company || "",
-        role: parseRes.title || "",
+        company: parseRes.company || '',
+        role: parseRes.title || '',
         match_summary: matchLevels,
         suggestions,
-      })
+      });
 
-      setStep("results")
+      setStep('results');
 
       // Track jd_analysed event
       trackJDAnalysed({
         job_analysis_id: parseRes.job_id,
-        company_type: parseRes.company_type || "unknown",
+        company_type: parseRes.company_type || 'unknown',
         source: mode,
-      })
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Analysis failed")
-      setStep("jd")
+      setError(err instanceof Error ? err.message : 'Analysis failed');
+      setStep('jd');
     }
-  }
+  };
 
   const handleAccept = async (suggestionId: string) => {
-    if (!jobId) return
+    if (!jobId) return;
 
     // Track signup_triggered if user is not logged in (first_accept trigger)
     if (!user) {
-      trackSignupTriggered({ trigger: "first_accept" })
+      trackSignupTriggered({ trigger: 'first_accept' });
     }
 
     try {
-      const suggestion = matchResult?.suggestions.find((s) => s.id === suggestionId)
+      const suggestion = matchResult?.suggestions.find((s) => s.id === suggestionId);
       await apiRequest(`/job-seeker/suggestions/${suggestionId}/feedback`, {
-        method: "POST",
-        body: { suggestion_id: suggestionId, action: "accept" },
-      })
+        method: 'POST',
+        body: { suggestion_id: suggestionId, action: 'accept' },
+      });
 
       // Track suggestion_accepted
       if (suggestion && matchResult) {
-        const positionInList = matchResult.suggestions.findIndex((s) => s.id === suggestionId) + 1
+        const positionInList = matchResult.suggestions.findIndex((s) => s.id === suggestionId) + 1;
         trackSuggestionAccepted({
           suggestion_id: suggestionId,
           company_type: matchResult.company,
           match_level: suggestion.match_level,
           position_in_list: positionInList,
-        })
+        });
       }
 
       // Update local state
@@ -223,28 +220,29 @@ export default function AnalysePage() {
               ),
             }
           : null
-      )
+      );
 
       // Show persona-specific toast
-      const persona = getStoredPersona()
+      const persona = getStoredPersona();
       if (persona) {
-        const remainingCount = (matchResult?.suggestions.filter((s) => !s.accepted && s.id !== suggestionId).length ?? 0)
-        const toastMessage = getSuggestionAcceptedCopy(persona, remainingCount)
-        useToastStore.getState().show(toastMessage, "success")
+        const remainingCount =
+          matchResult?.suggestions.filter((s) => !s.accepted && s.id !== suggestionId).length ?? 0;
+        const toastMessage = getSuggestionAcceptedCopy(persona, remainingCount);
+        useToastStore.getState().show(toastMessage, 'success');
       }
     } catch {
       // Silent failure - don't block user
     }
-  }
+  };
 
   const handleReject = async (suggestionId: string) => {
-    if (!jobId) return
+    if (!jobId) return;
     try {
-      const suggestion = matchResult?.suggestions.find((s) => s.id === suggestionId)
+      const suggestion = matchResult?.suggestions.find((s) => s.id === suggestionId);
       await apiRequest(`/job-seeker/suggestions/${suggestionId}/feedback`, {
-        method: "POST",
-        body: { suggestion_id: suggestionId, action: "reject" },
-      })
+        method: 'POST',
+        body: { suggestion_id: suggestionId, action: 'reject' },
+      });
 
       // Track suggestion_rejected
       if (suggestion && matchResult) {
@@ -253,7 +251,7 @@ export default function AnalysePage() {
           company_type: matchResult.company,
           match_level: suggestion.match_level,
           position_in_list: matchResult.suggestions.findIndex((s) => s.id === suggestionId) + 1,
-        })
+        });
       }
 
       setMatchResult((prev) =>
@@ -263,44 +261,44 @@ export default function AnalysePage() {
               suggestions: prev.suggestions.filter((s) => s.id !== suggestionId),
             }
           : null
-      )
+      );
     } catch {
       // Silent failure
     }
-  }
+  };
 
-  const handleExport = async (format: "pdf" | "docx") => {
-    if (!jobId) return
+  const handleExport = async (format: 'pdf' | 'docx') => {
+    if (!jobId) return;
 
     // Track signup_triggered if user is not logged in (download trigger)
     if (!user) {
-      trackSignupTriggered({ trigger: "download" })
+      trackSignupTriggered({ trigger: 'download' });
     }
 
     try {
-      const blob = await apiDownload("/job-seeker/export", {
-        method: "POST",
+      const blob = await apiDownload('/job-seeker/export', {
+        method: 'POST',
         body: { job_analysis_id: jobId, format },
-      })
+      });
 
       // Track resume_downloaded
       trackResumeDownloaded({
         job_analysis_id: jobId,
         format,
-      })
+      });
 
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `resume_${matchResult?.role || "export"}.${format}`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `resume_${matchResult?.role || 'export'}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } catch {
-      setError(`Failed to export as ${format.toUpperCase()}`)
+      setError(`Failed to export as ${format.toUpperCase()}`);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -319,21 +317,27 @@ export default function AnalysePage() {
       <main className="container mx-auto px-4 py-8 max-w-3xl">
         {/* Step indicator */}
         <div className="flex items-center gap-2 mb-8">
-          {["jd", "resume", "loading", "results"].map((s, i) => (
+          {['jd', 'resume', 'loading', 'results'].map((s, i) => (
             <div key={s} className="flex items-center gap-2">
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                  step === s || ["resume", "loading", "results"].indexOf(step) > ["jd", "resume", "loading", "results"].indexOf(s)
-                    ? "bg-brand-500 text-white"
-                    : "bg-gray-200 text-gray-600"
+                  step === s ||
+                  ['resume', 'loading', 'results'].indexOf(step) >
+                    ['jd', 'resume', 'loading', 'results'].indexOf(s)
+                    ? 'bg-brand-500 text-white'
+                    : 'bg-gray-200 text-gray-600'
                 }`}
               >
                 {i + 1}
               </div>
               {i < 3 && (
-                <div className={`w-12 h-0.5 ${
-                  ["resume", "loading", "results"].indexOf(step) > i ? "bg-brand-500" : "bg-gray-200"
-                }`} />
+                <div
+                  className={`w-12 h-0.5 ${
+                    ['resume', 'loading', 'results'].indexOf(step) > i
+                      ? 'bg-brand-500'
+                      : 'bg-gray-200'
+                  }`}
+                />
               )}
             </div>
           ))}
@@ -347,19 +351,20 @@ export default function AnalysePage() {
         )}
 
         {/* Step 1: JD Input */}
-        {step === "jd" && (
+        {step === 'jd' && (
           <div className="bg-white border rounded-xl p-6 space-y-6">
-            <h1 className="text-2xl font-bold text-gray-900">
-              What job are you targeting?
-            </h1>
+            <h1 className="text-2xl font-bold text-gray-900">What job are you targeting?</h1>
 
             {/* Mode toggle */}
             <div className="flex gap-4">
               <button
                 type="button"
-                onClick={() => { setMode("url"); setJobText("") }}
+                onClick={() => {
+                  setMode('url');
+                  setJobText('');
+                }}
                 className={`flex-1 p-4 border rounded-lg text-center transition-colors ${
-                  mode === "url" ? "border-brand-500 bg-brand-50" : "hover:border-gray-300"
+                  mode === 'url' ? 'border-brand-500 bg-brand-50' : 'hover:border-gray-300'
                 }`}
               >
                 <div className="text-2xl mb-2">🔗</div>
@@ -368,9 +373,12 @@ export default function AnalysePage() {
               </button>
               <button
                 type="button"
-                onClick={() => { setMode("text"); setJobUrl("") }}
+                onClick={() => {
+                  setMode('text');
+                  setJobUrl('');
+                }}
                 className={`flex-1 p-4 border rounded-lg text-center transition-colors ${
-                  mode === "text" ? "border-brand-500 bg-brand-50" : "hover:border-gray-300"
+                  mode === 'text' ? 'border-brand-500 bg-brand-50' : 'hover:border-gray-300'
                 }`}
               >
                 <div className="text-2xl mb-2">📋</div>
@@ -379,7 +387,7 @@ export default function AnalysePage() {
               </button>
             </div>
 
-            {mode === "url" ? (
+            {mode === 'url' ? (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Job Posting URL
@@ -410,7 +418,7 @@ export default function AnalysePage() {
             <button
               type="button"
               onClick={handleJdNext}
-              disabled={mode === "url" ? !jobUrl.trim() : !jobText.trim()}
+              disabled={mode === 'url' ? !jobUrl.trim() : !jobText.trim()}
               className="w-full py-3 bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50"
             >
               Continue
@@ -419,12 +427,10 @@ export default function AnalysePage() {
         )}
 
         {/* Step 2: Resume Upload */}
-        {step === "resume" && (
+        {step === 'resume' && (
           <div className="bg-white border rounded-xl p-6 space-y-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Upload your resume
-              </h1>
+              <h1 className="text-2xl font-bold text-gray-900">Upload your resume</h1>
               <p className="text-gray-600 mt-1">
                 We&apos;ll compare your experience with the job requirements.
               </p>
@@ -435,13 +441,13 @@ export default function AnalysePage() {
               onUploadSuccess={handleUploadSuccess}
               onText={() => {
                 // For text paste, we'd need a different flow
-                alert("Text paste for resume coming soon")
+                alert('Text paste for resume coming soon');
               }}
             />
 
             <button
               type="button"
-              onClick={() => setStep("jd")}
+              onClick={() => setStep('jd')}
               className="w-full py-2 border rounded-lg hover:bg-gray-50"
             >
               Back
@@ -450,23 +456,19 @@ export default function AnalysePage() {
         )}
 
         {/* Step 3: Loading */}
-        {step === "loading" && (
+        {step === 'loading' && (
           <div className="bg-white border rounded-xl p-12 text-center space-y-6">
             <div className="w-16 h-16 mx-auto border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
             <div>
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                Analysing your match...
-              </h2>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Analysing your match...</h2>
               <p className="text-gray-600">{loadingMessage}</p>
             </div>
-            <div className="text-sm text-gray-500">
-              This usually takes 10-30 seconds
-            </div>
+            <div className="text-sm text-gray-500">This usually takes 10-30 seconds</div>
           </div>
         )}
 
         {/* Step 4: Results */}
-        {step === "results" && matchResult && (
+        {step === 'results' && matchResult && (
           <div className="space-y-6">
             {/* Match Summary */}
             <div className="bg-white border rounded-xl p-6">
@@ -501,13 +503,13 @@ export default function AnalysePage() {
               {/* Export buttons */}
               <div className="mt-4 pt-4 border-t flex gap-3 justify-end">
                 <button
-                  onClick={() => handleExport("docx")}
+                  onClick={() => handleExport('docx')}
                   className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 flex items-center gap-2"
                 >
                   <span>Download DOCX</span>
                 </button>
                 <button
-                  onClick={() => handleExport("pdf")}
+                  onClick={() => handleExport('pdf')}
                   className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 flex items-center gap-2"
                 >
                   <span>Download PDF</span>
@@ -519,7 +521,7 @@ export default function AnalysePage() {
             <div className="space-y-4">
               <h2 className="font-semibold text-lg">Suggestions</h2>
               {matchResult.suggestions
-                .filter((s) => s.match_level !== "fundamental")
+                .filter((s) => s.match_level !== 'fundamental')
                 .map((suggestion) => (
                   <SuggestionCard
                     key={suggestion.id}
@@ -538,7 +540,7 @@ export default function AnalysePage() {
                 </summary>
                 <div className="px-4 pb-4 space-y-4">
                   {matchResult.suggestions
-                    .filter((s) => s.match_level === "fundamental")
+                    .filter((s) => s.match_level === 'fundamental')
                     .map((suggestion) => (
                       <SuggestionCard
                         key={suggestion.id}
@@ -554,7 +556,7 @@ export default function AnalysePage() {
         )}
       </main>
     </div>
-  )
+  );
 }
 
 function SuggestionCard({
@@ -562,23 +564,41 @@ function SuggestionCard({
   onAccept,
   onReject,
 }: {
-  suggestion: Suggestion
-  onAccept: () => void
-  onReject: () => void
+  suggestion: Suggestion;
+  onAccept: () => void;
+  onReject: () => void;
 }) {
-  const [expanded, setExpanded] = useState(true)
+  const [expanded, setExpanded] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [modifiedText, setModifiedText] = useState(suggestion.suggested_text);
+  const [submitting, setSubmitting] = useState(false);
 
   const levelColors: Record<string, string> = {
-    strong: "bg-match-strong-tint text-match-strong border-match-strong",
-    transferable: "bg-match-transferable-tint text-match-transferable border-match-transferable",
-    addressable: "bg-match-addressable-tint text-match-addressable border-match-addressable",
-    fundamental: "bg-match-fundamental-tint text-match-fundamental border-match-fundamental",
-  }
+    strong: 'bg-match-strong-tint text-match-strong border-match-strong',
+    transferable: 'bg-match-transferable-tint text-match-transferable border-match-transferable',
+    addressable: 'bg-match-addressable-tint text-match-addressable border-match-addressable',
+    fundamental: 'bg-match-fundamental-tint text-match-fundamental border-match-fundamental',
+  };
 
-  const levelClass = levelColors[suggestion.match_level] || levelColors.transferable
+  const levelClass = levelColors[suggestion.match_level] || levelColors.transferable;
+
+  const handleModify = async () => {
+    setSubmitting(true);
+    try {
+      await apiRequest(`/job-seeker/suggestions/${suggestion.id}/modify`, {
+        method: 'POST',
+        body: { suggestion_id: suggestion.id, modified_text: modifiedText },
+      });
+      setIsEditing(false);
+    } catch {
+      // Silent failure
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
-    <div className={`bg-white border rounded-xl overflow-hidden ${!expanded ? "opacity-60" : ""}`}>
+    <div className={`bg-white border rounded-xl overflow-hidden ${!expanded ? 'opacity-60' : ''}`}>
       <div
         className="p-4 cursor-pointer flex items-start justify-between"
         onClick={() => setExpanded(!expanded)}
@@ -591,7 +611,7 @@ function SuggestionCard({
           </span>
           <p className="mt-2 text-sm text-gray-500">{suggestion.section}</p>
         </div>
-        <div className="text-gray-400">{expanded ? "−" : "+"}</div>
+        <div className="text-gray-400">{expanded ? '−' : '+'}</div>
       </div>
 
       {expanded && (
@@ -607,20 +627,51 @@ function SuggestionCard({
           {/* Suggested */}
           <div>
             <div className="text-xs font-medium text-gray-500 mb-1">Suggested</div>
-            <div className="p-3 bg-brand-50 border-l-2 border-brand-500 rounded-r-lg text-sm">
-              {(() => {
-                const { cleaned } = sanitizeAiOutput(suggestion.suggested_text)
-                return cleaned
-              })()}
-            </div>
+            {isEditing ? (
+              <div className="space-y-2">
+                <textarea
+                  value={modifiedText}
+                  onChange={(e) => setModifiedText(e.target.value)}
+                  rows={4}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 text-sm"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleModify}
+                    disabled={submitting}
+                    className="flex-1 py-2 bg-brand-500 text-white text-sm rounded-lg hover:bg-brand-600 disabled:opacity-50"
+                  >
+                    {submitting ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setModifiedText(suggestion.suggested_text);
+                      setIsEditing(false);
+                    }}
+                    className="flex-1 py-2 border text-sm rounded-lg hover:bg-gray-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 bg-brand-50 border-l-2 border-brand-500 rounded-r-lg text-sm">
+                {(() => {
+                  const { cleaned } = sanitizeAiOutput(suggestion.suggested_text);
+                  return cleaned;
+                })()}
+              </div>
+            )}
           </div>
 
           {/* Rationale */}
           <div className="text-sm text-gray-600">
-            {suggestion.rationale ? (() => {
-              const { cleaned } = sanitizeAiOutput(suggestion.rationale)
-              return cleaned
-            })() : null}
+            {suggestion.rationale
+              ? (() => {
+                  const { cleaned } = sanitizeAiOutput(suggestion.rationale);
+                  return cleaned;
+                })()
+              : null}
           </div>
 
           {/* Actions */}
@@ -632,6 +683,12 @@ function SuggestionCard({
               Accept
             </button>
             <button
+              onClick={() => setIsEditing(true)}
+              className="flex-1 py-2 border text-sm rounded-lg hover:bg-gray-50"
+            >
+              Modify
+            </button>
+            <button
               onClick={onReject}
               className="flex-1 py-2 border text-sm rounded-lg hover:bg-gray-50"
             >
@@ -641,5 +698,5 @@ function SuggestionCard({
         </div>
       )}
     </div>
-  )
+  );
 }
