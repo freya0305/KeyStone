@@ -69,6 +69,7 @@ class ClaudeClient:
         system_prompt: str,
         user_prompt: str,
         max_tokens: int = 4096,
+        timeout: float = 30.0,
     ) -> ClaudeResponse:
         """Generate content with Claude API with circuit breaker protection.
 
@@ -77,6 +78,7 @@ class ClaudeClient:
             system_prompt: System prompt
             user_prompt: User prompt
             max_tokens: Max output tokens (capped at 4096 for Haiku)
+            timeout: Request timeout in seconds (default 30s; resume analysis ≤10s, suggestions ≤15s per spec)
 
         Returns:
             ClaudeResponse with content and token usage
@@ -91,6 +93,7 @@ class ClaudeClient:
                 system=system_prompt,
                 max_tokens=max_tokens,
                 messages=[{"role": "user", "content": user_prompt}],
+                timeout=timeout,
             )
 
         try:

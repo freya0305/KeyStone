@@ -4,6 +4,7 @@ Implements: M1-auth-pdpa.md § M1.3
 - POST /api/auth/phone/send-otp — send 6-digit OTP to SG +65 number
 - POST /api/auth/phone/verify — validate OTP and mark phone verified
 """
+import hmac
 import random
 import re
 from datetime import datetime
@@ -64,7 +65,8 @@ class VerifyOtpRequest(BaseModel):
     phone: str  # +65XXXXXXXX
     otp: str = ""  # 6-digit code (optional if clerk_verified=true)
     consent_given: bool = False  # STORAGE consent explicit acknowledgement
-    ai_consents: bool = False  # AI_PROCESSING + AI_TRAINING collected at sign-up
+    ai_consents: bool = False  # AI_PROCESSING consent (always granted at this step)
+    ai_training_consent: bool = False  # AI_TRAINING consent (opt-in, records refusal if false)
     clerk_verified: bool = False  # Set to true when Clerk handled phone verification
 
 
@@ -244,23 +246,25 @@ async def verify_otp(
     # STORAGE: explicit - user must acknowledge during phone verification
     if req.consent_given:
         await consent_service.grant(user_id, ConsentType.STORAGE)
-    # AI_PROCESSING + AI_TRAINING: collected at sign-up, stored during verification
-    if req.ai_consents:
-        await consent_service.grant(user_id, ConsentType.AI_PROCESSING)
+    # AI_PROCESSING: always granted at verification (user must accept to reach this step)
+    await consent_service.grant(user_id, ConsentType.AI_PROCESSING)
+    # AI_TRAINING: opt-in consent - only grant if user explicitly opted in
+    if req.ai_training_consent:
         await consent_service.grant(user_id, ConsentType.AI_TRAINING)
-        logger.info("consent.recorded_at_verification", user_id=str(user_id), ai_consents=True)
+        logger.info("consent.recorded_at_verification", user_id=str(user_id), ai_training=True)
+    # If ai_training_consent is False, we simply don't grant it - no record created
+    # has_consent() will return False, gating signals appropriately
 
     return VerifyOtpResponse(verified=True, message="Phone verified successfully")
 
 
+import hmac
+
+# ... existing code ...
+
 def _constant_time_compare(a: str, b: str) -> bool:
     """Constant-time string comparison to prevent timing attacks."""
-    if len(a) != len(b):
-        return False
-    result = 0
-    for x, y in zip(a, b):
-        result |= ord(x) ^ ord(y)
-    return result == 0
+    return hmac.compare_digest(a, b)
 
 
 async def _send_twilio_sms(account_sid: str, auth_token: str, from_: str, to: str, body: str) -> None:

@@ -80,6 +80,7 @@ Return ONLY valid JSON, no markdown or explanation."""
             model=settings.anthropic_model_haiku,
             system_prompt=_JD_PARSE_SYSTEM_PROMPT,
             user_prompt=prompt,
+            timeout=10.0,  # Analysis ≤10s per spec
             max_tokens=1024,
         )
 

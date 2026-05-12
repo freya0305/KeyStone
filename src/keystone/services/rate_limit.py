@@ -4,7 +4,7 @@ Simple in-memory rate limiter for MVP.
 Production should use Redis-based rate limiting.
 """
 import time
-from collections import defaultdict
+from collections import deque, defaultdict
 from typing import Callable
 import uuid
 
@@ -15,8 +15,8 @@ logger = structlog.get_logger()
 
 # Simple in-memory rate limiter
 # Key: identifier (IP or user_id)
-# Value: list of request timestamps
-_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+# Value: deque of request timestamps, max 1000 per identifier to bound memory
+_rate_limit_store: dict[str, deque[float]] = defaultdict(lambda: deque(maxlen=1000))
 
 # Rate limits per tier
 RATE_LIMITS = {

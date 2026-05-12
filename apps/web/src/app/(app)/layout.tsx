@@ -1,41 +1,36 @@
-"use client"
+'use client';
 
-import { auth, useUser } from "@clerk/nextjs"
-import { redirect } from "next/navigation"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { useState } from "react"
+import { useUser } from '@clerk/nextjs';
+import { redirect } from 'next/navigation';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useState } from 'react';
 
-export default function AppLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  const { userId } = auth()
-  const { user, isLoaded } = useUser()
-  const pathname = usePathname()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  const { userId, isLoaded } = useUser();
+  const pathname = usePathname();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   if (!isLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full animate-spin" />
       </div>
-    )
+    );
   }
 
   if (!userId) {
-    redirect("/sign-in")
+    redirect('/sign-in');
   }
 
   const navItems = [
-    { href: "/app", label: "Dashboard", icon: "⊞" },
-    { href: "/app/new", label: "New Application", icon: "+" },
-    { href: "/app/applications", label: "Applications", icon: "☰" },
-    { href: "/app/resumes", label: "Resumes", icon: "☐" },
-  ]
+    { href: '/app', label: 'Dashboard', icon: '⊞' },
+    { href: '/app/new', label: 'New Application', icon: '+' },
+    { href: '/app/applications', label: 'Applications', icon: '☰' },
+    { href: '/app/resumes', label: 'Resumes', icon: '☐' },
+  ];
 
-  const isActive = (href: string) => pathname === href
+  const isActive = (href: string) => pathname === href;
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -59,8 +54,8 @@ export default function AppLayout({
               href={item.href}
               className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                 isActive(item.href)
-                  ? "bg-brand-50 text-brand-700 font-medium"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                  ? 'bg-brand-50 text-brand-700 font-medium'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
               }`}
             >
               <span className="text-lg">{item.icon}</span>
@@ -80,9 +75,9 @@ export default function AppLayout({
           <Link
             href="/app/settings"
             className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-              isActive("/app/settings")
-                ? "bg-brand-50 text-brand-700 font-medium"
-                : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+              isActive('/app/settings')
+                ? 'bg-brand-50 text-brand-700 font-medium'
+                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
             }`}
           >
             <span className="text-lg">⚙</span>
@@ -93,12 +88,12 @@ export default function AppLayout({
           <div className="flex items-center gap-3 px-3 py-2">
             <div className="w-8 h-8 bg-brand-100 rounded-full flex items-center justify-center">
               <span className="text-brand-700 text-sm font-medium">
-                {user?.firstName?.[0] || user?.emailAddresses?.[0]?.emailAddress?.[0] || "U"}
+                {user?.firstName?.[0] || user?.emailAddresses?.[0]?.emailAddress?.[0] || 'U'}
               </span>
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium text-gray-900 truncate">
-                {user?.firstName || "User"}
+                {user?.firstName || 'User'}
               </div>
             </div>
           </div>
@@ -143,10 +138,7 @@ export default function AppLayout({
           >
             <div className="p-4 border-b flex items-center justify-between">
               <span className="font-semibold">Menu</span>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="text-gray-500"
-              >
+              <button onClick={() => setSidebarOpen(false)} className="text-gray-500">
                 ✕
               </button>
             </div>
@@ -158,8 +150,8 @@ export default function AppLayout({
                   onClick={() => setSidebarOpen(false)}
                   className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${
                     isActive(item.href)
-                      ? "bg-brand-50 text-brand-700 font-medium"
-                      : "text-gray-600 hover:bg-gray-100"
+                      ? 'bg-brand-50 text-brand-700 font-medium'
+                      : 'text-gray-600 hover:bg-gray-100'
                   }`}
                 >
                   <span className="text-lg">{item.icon}</span>
@@ -170,9 +162,9 @@ export default function AppLayout({
                 href="/app/settings"
                 onClick={() => setSidebarOpen(false)}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${
-                  isActive("/app/settings")
-                    ? "bg-brand-50 text-brand-700 font-medium"
-                    : "text-gray-600 hover:bg-gray-100"
+                  isActive('/app/settings')
+                    ? 'bg-brand-50 text-brand-700 font-medium'
+                    : 'text-gray-600 hover:bg-gray-100'
                 }`}
               >
                 <span className="text-lg">⚙</span>
@@ -195,9 +187,7 @@ export default function AppLayout({
       <div className="flex-1 lg:ml-64">
         {/* Top padding for mobile header */}
         <div className="h-16 lg:hidden" />
-        <main className="p-4 lg:p-8">
-          {children}
-        </main>
+        <main className="p-4 lg:p-8">{children}</main>
       </div>
 
       {/* Mobile Bottom Tab Bar */}
@@ -208,13 +198,11 @@ export default function AppLayout({
               key={item.href}
               href={item.href}
               className={`flex flex-col items-center justify-center gap-0.5 w-full h-full ${
-                isActive(item.href)
-                  ? "text-brand-500"
-                  : "text-gray-400"
+                isActive(item.href) ? 'text-brand-500' : 'text-gray-400'
               }`}
             >
               <span className="text-xl">{item.icon}</span>
-              <span className="text-xs">{item.label.split(" ")[0]}</span>
+              <span className="text-xs">{item.label.split(' ')[0]}</span>
             </Link>
           ))}
         </div>
@@ -223,5 +211,5 @@ export default function AppLayout({
       {/* Bottom padding for mobile tab bar */}
       <div className="h-14 lg:hidden" />
     </div>
-  )
+  );
 }

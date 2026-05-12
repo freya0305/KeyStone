@@ -362,15 +362,15 @@ export default function PricingPage() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {/* Agency Basic */}
+            {/* Agency Team */}
             <div className="bg-white border rounded-xl p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-1">Agency Basic</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-1">Agency Team</h3>
               <div className="mb-4">
                 <span className="text-3xl font-bold text-gray-900">SGD 79</span>
                 <span className="text-gray-500">/month</span>
               </div>
               <p className="text-sm text-gray-600 mb-4">
-                For individual recruiters getting started with data-driven JDs.
+                For small teams getting started with data-driven JDs.
               </p>
               <ul className="space-y-2 mb-6">
                 <li className="flex items-center gap-2 text-sm">
@@ -387,7 +387,7 @@ export default function PricingPage() {
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  1 user
+                  5 users
                 </li>
                 <li className="flex items-center gap-2 text-sm">
                   <svg
@@ -403,7 +403,7 @@ export default function PricingPage() {
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  50 JD generations/month
+                  100 JD generations/month
                 </li>
                 <li className="flex items-center gap-2 text-sm">
                   <svg
@@ -489,7 +489,7 @@ export default function PricingPage() {
                 <span className="text-purple-200">/month</span>
               </div>
               <p className="text-sm text-purple-100 mb-4">
-                For recruiters who need unlimited output and faster workflows.
+                For recruiters who need more output and team collaboration.
               </p>
               <ul className="space-y-2 mb-6">
                 <li className="flex items-center gap-2 text-sm">
@@ -506,7 +506,7 @@ export default function PricingPage() {
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  1 user
+                  10 users
                 </li>
                 <li className="flex items-center gap-2 text-sm">
                   <svg
@@ -522,7 +522,7 @@ export default function PricingPage() {
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  <strong>Unlimited</strong> JD generations
+                  400 JD generations/month
                 </li>
                 <li className="flex items-center gap-2 text-sm">
                   <svg
@@ -572,9 +572,9 @@ export default function PricingPage() {
                   </svg>
                   Brand templates
                 </li>
-                <li className="flex items-center gap-2 text-sm text-gray-400">
+                <li className="flex items-center gap-2 text-sm">
                   <svg
-                    className="w-4 h-4 flex-shrink-0"
+                    className="w-4 h-4 text-green-400 flex-shrink-0"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -583,10 +583,10 @@ export default function PricingPage() {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
+                      d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  Team seats
+                  Team dashboard & analytics
                 </li>
               </ul>
               <Link
@@ -597,15 +597,15 @@ export default function PricingPage() {
               </Link>
             </div>
 
-            {/* Agency Team */}
+            {/* Agency Enterprise */}
             <div className="bg-white border rounded-xl p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-1">Agency Team</h3>
+              <h3 className="text-lg font-bold text-gray-900 mb-1">Agency Enterprise</h3>
               <div className="mb-4">
                 <span className="text-3xl font-bold text-gray-900">SGD 449</span>
                 <span className="text-gray-500">/month</span>
               </div>
               <p className="text-sm text-gray-600 mb-4">
-                For growing teams that need shared access and collaboration.
+                For large teams that need unlimited output and full collaboration.
               </p>
               <ul className="space-y-2 mb-6">
                 <li className="flex items-center gap-2 text-sm">
@@ -622,7 +622,7 @@ export default function PricingPage() {
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  5 users
+                  Unlimited users
                 </li>
                 <li className="flex items-center gap-2 text-sm">
                   <svg
@@ -716,10 +716,19 @@ export default function PricingPage() {
 
           {/* Free tier note for recruiters */}
           <p className="text-center text-sm text-gray-500 mt-4">
-            Free tier for recruiters: 20 JD generations/month, no credit card required.{' '}
+            Free tier for recruiters: 10 JD generations/month, 1 user.{' '}
             <Link href="/recruiter" className="text-blue-600 hover:underline">
               Start for free
             </Link>
+          </p>
+
+          {/* Recruiter terms link */}
+          <p className="text-center text-sm text-gray-500 mt-2">
+            By signing up, you agree to our{' '}
+            <Link href="/recruiter/terms" className="text-blue-600 hover:underline">
+              Recruiter Terms of Service
+            </Link>
+            , including our no-AI-training commitment.
           </p>
         </div>
 

@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str
     stripe_price_pro_monthly: str = "price_pro_monthly"
     stripe_price_pro_annual: str = "price_pro_annual"
+    # B2B Stripe price IDs
+    stripe_price_b2b_basic: str = "price_b2b_basic"  # Agency Team: SGD 79/mo, 5 users, 100 JD/month
+    stripe_price_b2b_pro: str = "price_b2b_pro"  # Agency Pro: SGD 199/mo, 10 users, 400 JD/month
+    stripe_price_b2b_team: str = "price_b2b_team"  # Agency Enterprise: SGD 449/mo, unlimited users, unlimited JD
 
     # App
     app_base_url: str = "http://localhost:3000"

@@ -467,6 +467,7 @@ async def parse_resume_with_claude(resume_text: str, content_hash: str) -> Parse
             model=settings.anthropic_model_haiku,
             system_prompt=RESUME_PARSE_SYSTEM_PROMPT,
             user_prompt=f"Parse this resume:\n\n{resume_text[:8000]}",  # Limit to 8k chars
+            timeout=10.0,  # Resume analysis ≤10s per spec
             max_tokens=2048,
         )
 

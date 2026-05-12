@@ -60,11 +60,13 @@ class TestJDFetchResult:
         result = JDFetchResult(
             text="Job description text",
             source_url="https://example.com",
+            source_platform="mcf",
             cached=False,
             fetched_at=None,
         )
         assert hasattr(result, 'text')
         assert hasattr(result, 'source_url')
+        assert hasattr(result, 'source_platform')
         assert hasattr(result, 'cached')
         assert hasattr(result, 'fetched_at')
 

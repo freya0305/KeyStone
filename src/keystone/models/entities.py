@@ -4,7 +4,7 @@ Includes both Job Seeker and Recruiter (B2B) entities.
 RLS (Row-Level Security) must be enforced at database level for B2B tables.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 from enum import Enum as PyEnum
 from typing import Optional
 
@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     Text,
     DateTime,
+    Date,
     ForeignKey,
     Integer,
     Boolean,
@@ -21,6 +22,8 @@ from sqlalchemy import (
     Enum,
     Index,
     CheckConstraint,
+    Float,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -41,6 +44,7 @@ class ApplicationStatus(str, PyEnum):
     OFFER = "offer"
     REJECTED = "rejected"
     WITHDRAWN = "withdrawn"
+    CLOSED = "closed"  # Auto-closed after 60 days of inactivity
 
 
 class AccessLevel(str, PyEnum):
@@ -82,6 +86,13 @@ class User(Base):
     persona = Column(String(50), nullable=True)  # fresh_graduate, career_switcher, pmet, employed_exploring
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_login_at = Column(DateTime, nullable=True)  # for weekly digest tracking
+
+    # Gamification fields (P2: engagement flywheel)
+    current_streak = Column(Integer, default=0, nullable=False)  # consecutive days with activity
+    longest_streak = Column(Integer, default=0, nullable=False)  # all-time best
+    last_activity_date = Column(Date, nullable=True)  # last date with application activity
+    earned_badges = Column(JSON, default=list, nullable=False)  # list of earned badge IDs
 
     # Relationships
     resumes = relationship("Resume", back_populates="user", lazy="selectin")
@@ -141,6 +152,28 @@ class Resume(Base):
     __table_args__ = (
         Index("ix_resumes_user_id", "user_id"),
         Index("ix_resumes_content_hash", "content_hash"),
+    )
+
+
+class AnalyzedJob(Base):
+    """Track which JDs a user has already analyzed (for free tier gating).
+
+    Uses job_url_hash to identify unique job postings - the same job URL
+    analyzed multiple times counts as a single analyzed job.
+    """
+
+    __tablename__ = "analyzed_jobs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    job_url_hash = Column(String(64), nullable=False, index=True)  # SHA256 of normalized job URL
+    job_title = Column(String(500), nullable=True)
+    analyzed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "job_url_hash", name="uq_analyzed_jobs_user_url"),
+        Index("ix_analyzed_jobs_user_id", "user_id"),
+        Index("ix_analyzed_jobs_job_url_hash", "job_url_hash"),
     )
 
 
@@ -251,6 +284,7 @@ class Application(Base):
     job_url = Column(Text, nullable=True)  # URL of the job posting
     applied_date = Column(DateTime, nullable=True)  # when user applied to this job
     status = Column(Enum(ApplicationStatus), default=ApplicationStatus.INTERESTED)
+    is_confirmed = Column(Boolean, default=False, nullable=False)  # user confirmed they submitted
     stages = Column(JSON, default=list)  # kept in sync with application_stages table
     final_outcome = Column(String(50), nullable=True)
     source = Column(String(100), nullable=True)
@@ -287,7 +321,15 @@ class B2BTenant(Base):
     tenant_type = Column(String(50), nullable=True)  # UNIVERSITY/WSG/AGENCY
     contract_value = Column(Numeric(10, 2), nullable=True)
     seat_count = Column(Integer, default=1)
+    # Stripe subscription fields
+    stripe_subscription_id = Column(String(255), nullable=True, unique=True)
+    tier = Column(String(20), nullable=False, default="free")  # free/basic/pro/team
+    jd_generation_count = Column(Integer, default=0)
+    jd_limit = Column(Integer, default=-1)  # -1 = unlimited, 50 for basic
+    jd_limit_reset_at = Column(DateTime, nullable=True)  # Monthly reset timestamp
+    is_suspended = Column(Boolean, default=False)  # Suspended when subscription cancelled
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     users = relationship("B2BUser", back_populates="tenant", lazy="selectin")
@@ -305,6 +347,8 @@ class B2BUser(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, unique=True)
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("b2b_tenants.id"), nullable=False)
     access_level = Column(Enum(AccessLevel), default=AccessLevel.MEMBER)
+    invited_at = Column(DateTime, nullable=True)  # When invite was sent
+    joined_at = Column(DateTime, nullable=True)  # When user accepted invite
     provisioned_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -435,3 +479,121 @@ class B2BAggregateReport(Base):
 
     # Relationships
     tenant = relationship("B2BTenant")
+
+
+# =============================================================================
+# SKILL FREQUENCY ANALYSIS MODELS (JD Generator v2)
+# =============================================================================
+
+
+class RawJD(Base):
+    """Raw job description from all sources.
+
+    Architecture: specs/jd-generator-architecture.md §10
+    """
+
+    __tablename__ = "raw_jds"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_url = Column(Text, nullable=True)
+    source_platform = Column(String(50), nullable=True)  # mcf, jobstreet, linkedin, direct
+    data_source = Column(String(50), nullable=False)  # scraped, user_submitted, partner
+    job_title_raw = Column(Text, nullable=True)
+    company = Column(Text, nullable=True)
+    company_type = Column(
+        String(50), nullable=False
+    )  # glc, statutory_board, mnc, startup, banking, fintech, sme, other
+    industry = Column(
+        String(50), nullable=False
+    )  # fintech, technology, banking_finance, consulting, government_public, healthcare, retail_consumer, engineering, education, other
+    seniority = Column(String(50), nullable=False)  # junior, mid, senior, lead
+    raw_text = Column(Text, nullable=True)
+    posted_at = Column(DateTime, nullable=True)
+    scraped_at = Column(DateTime, default=datetime.utcnow)
+    submitted_at = Column(DateTime, nullable=True)
+    consent_given = Column(Boolean, default=False)
+    is_duplicate = Column(Boolean, default=False)
+    is_spam = Column(Boolean, default=False)
+    is_stale = Column(Boolean, default=False)
+
+    __table_args__ = (
+        Index("ix_raw_jds_company_title_posted", "company", "job_title_raw", "posted_at"),
+        Index("ix_raw_jds_data_source", "data_source"),
+        Index("ix_raw_jds_industry_seniority", "industry", "seniority"),
+    )
+
+
+class NormalizedRole(Base):
+    """Normalized job title with variants.
+
+    Architecture: specs/jd-generator-architecture.md §10
+    """
+
+    __tablename__ = "normalized_roles"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title_normalized = Column(Text, nullable=False)
+    title_variants = Column(JSON, nullable=True)  # ["Software Engineer", "SWE", "Software Dev"]
+    industry = Column(String(50), nullable=False)
+    seniority = Column(String(50), nullable=False)
+    total_jds = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("title_normalized", "industry", "seniority", name="uq_normalized_role_lookup"),
+        Index("ix_normalized_roles_title", "title_normalized"),
+    )
+
+
+class RoleSkillFrequency(Base):
+    """Denormalized skill frequency read table.
+
+    Architecture: specs/jd-generator-architecture.md §10
+    Updated nightly via ETL.
+    """
+
+    __tablename__ = "role_skill_frequency"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    normalized_role_id = Column(UUID(as_uuid=True), ForeignKey("normalized_roles.id"), nullable=True)
+    title_normalized = Column(Text, nullable=False)
+    industry = Column(String(50), nullable=False)
+    seniority = Column(String(50), nullable=False)
+    company_type = Column(String(50), nullable=False)  # glc, statutory_board, mnc, startup, banking, fintech, sme, other, ANY
+    skills_json = Column(
+        JSON, nullable=False
+    )  # [{"skill": "Python", "raw_weighted_freq": 0.811, "required_count": 73, "preferred_count": 27, "total_jds": 100}]
+    total_jds_analyzed = Column(Integer, nullable=False)
+    recency_weight = Column(Float, default=1.0)
+    last_updated = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("title_normalized", "industry", "seniority", "company_type", name="uq_role_skill_freq_lookup"),
+        Index("ix_role_skill_freq_title", "title_normalized"),
+    )
+
+
+class JDGenerationLog(Base):
+    """JD generation feedback log.
+
+    Tracks skill sources and generation outcomes per architecture spec §8.
+    """
+
+    __tablename__ = "jd_generation_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    input_title = Column(Text, nullable=True)
+    input_industry = Column(String(50), nullable=True)
+    input_seniority = Column(String(50), nullable=True)
+    input_company_type = Column(String(50), nullable=True)
+    input_skills_user = Column(JSON, nullable=True)  # user-provided skills
+    skills_from_frequency = Column(JSON, nullable=True)  # AI-selected from skill_frequency DB
+    generation_source = Column(String(50), nullable=False)  # "skill_frequency", "fallback_prompt", "user_provided"
+    adopted = Column(Boolean, nullable=True)  # saved by recruiter
+    edited = Column(Boolean, nullable=True)  # recruiter changed AI skills
+    used_in_posting = Column(Boolean, nullable=True)  # actually posted
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index("ix_jd_generation_logs_created_at", "created_at"),
+    )

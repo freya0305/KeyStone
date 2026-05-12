@@ -1,81 +1,101 @@
-"use client"
+'use client';
 
-import { useState, useEffect } from "react"
-import Link from "next/link"
-import { apiRequest } from "@/lib/api"
-import { AutoCloseBanner } from "@/components/keystone/AutoCloseBanner"
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { apiRequest } from '@/lib/api';
+import { AutoCloseBanner } from '@/components/keystone/AutoCloseBanner';
 
 interface Application {
-  id: string
-  employer: string
-  role: string
-  status: string
-  applied_at: string
-  job_url?: string
+  id: string;
+  employer: string;
+  role: string;
+  status: string;
+  applied_at: string;
+  job_url?: string;
 }
 
 interface AnalyticsSummary {
-  total_applications: number
-  by_status: Record<string, number>
-  nudge_eligible_count: number
-  active_last_30d: number
-  completed_last_30d: number
+  total_applications: number;
+  by_status: Record<string, number>;
+  nudge_eligible_count: number;
+  active_last_30d: number;
+  completed_last_30d: number;
 }
 
 interface AutoClosedApplication {
-  id: string
-  employer: string
-  role: string
-  status: string
-  auto_closed_at: string
+  id: string;
+  employer: string;
+  role: string;
+  status: string;
+  auto_closed_at: string;
+}
+
+interface Badge {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  earned: boolean;
+  earned_at: string | null;
+}
+
+interface GamificationStats {
+  current_streak: number;
+  longest_streak: number;
+  last_activity_date: string | null;
+  badges: Badge[];
 }
 
 export default function DashboardPage() {
-  const [applications, setApplications] = useState<Application[]>([])
-  const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null)
-  const [autoClosedApps, setAutoClosedApps] = useState<AutoClosedApplication[]>([])
-  const [loading, setLoading] = useState(true)
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
+  const [autoClosedApps, setAutoClosedApps] = useState<AutoClosedApplication[]>([]);
+  const [gamification, setGamification] = useState<GamificationStats | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch applications, analytics, and auto-closed in parallel
+    // Fetch applications, analytics, auto-closed, and gamification in parallel
     Promise.all([
-      apiRequest<Application[]>("/job-seeker/applications"),
-      apiRequest<AnalyticsSummary>("/job-seeker/analytics/summary"),
-      apiRequest<AutoClosedApplication[]>("/job-seeker/applications/auto-closed"),
+      apiRequest<Application[]>('/job-seeker/applications'),
+      apiRequest<AnalyticsSummary>('/job-seeker/analytics/summary'),
+      apiRequest<AutoClosedApplication[]>('/job-seeker/applications/auto-closed'),
+      apiRequest<GamificationStats>('/job-seeker/analytics/gamification'),
     ])
-      .then(([apps, summary, autoClosed]) => {
-        setApplications(apps.slice(0, 5)) // Recent 5
-        setAnalytics(summary)
-        setAutoClosedApps(autoClosed)
+      .then(([apps, summary, autoClosed, gstats]) => {
+        setApplications(apps.slice(0, 5)); // Recent 5
+        setAnalytics(summary);
+        setAutoClosedApps(autoClosed);
+        setGamification(gstats);
       })
       .catch(() => {
-        setApplications([])
-        setAnalytics(null)
-        setAutoClosedApps([])
+        setApplications([]);
+        setAnalytics(null);
+        setAutoClosedApps([]);
+        setGamification(null);
       })
-      .finally(() => setLoading(false))
-  }, [])
+      .finally(() => setLoading(false));
+  }, []);
 
   const statusColors: Record<string, string> = {
-    applied: "bg-blue-100 text-blue-700",
-    screening: "bg-yellow-100 text-yellow-700",
-    interview: "bg-purple-100 text-purple-700",
-    offer: "bg-green-100 text-green-700",
-    rejected: "bg-red-100 text-red-700",
-    withdrawn: "bg-gray-100 text-gray-700",
-  }
+    applied: 'bg-blue-100 text-blue-700',
+    screening: 'bg-yellow-100 text-yellow-700',
+    interview: 'bg-purple-100 text-purple-700',
+    offer: 'bg-green-100 text-green-700',
+    rejected: 'bg-red-100 text-red-700',
+    withdrawn: 'bg-gray-100 text-gray-700',
+  };
 
-  const recentApps = applications.slice(0, 5)
+  const recentApps = applications.slice(0, 5);
 
   const handleAutoClosedCorrect = (ids: string[]) => {
     // Navigate to applications page with auto-closed filter
-    window.location.href = "/app/applications"
-  }
+    window.location.href = '/app/applications';
+  };
 
   const handleAutoClosedDismiss = () => {
     // API call to acknowledge dismiss could go here
-    setAutoClosedApps([])
-  }
+    setAutoClosedApps([]);
+  };
 
   return (
     <div className="space-y-8">
@@ -110,8 +130,61 @@ export default function DashboardPage() {
             <div className="text-sm text-gray-500">Completed (30d)</div>
           </div>
           <div className="bg-white border rounded-xl p-4">
-            <div className="text-2xl font-bold text-amber-600">{analytics.nudge_eligible_count}</div>
+            <div className="text-2xl font-bold text-amber-600">
+              {analytics.nudge_eligible_count}
+            </div>
             <div className="text-sm text-gray-500">Need Check-in</div>
+          </div>
+        </div>
+      )}
+
+      {/* Gamification: Streak & Badges */}
+      {gamification && (
+        <div className="bg-white border rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-lg">Your Progress</h2>
+          </div>
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Streak Section */}
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 bg-orange-50 rounded-xl flex items-center justify-center text-3xl">
+                🔥
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-gray-900">
+                  {gamification.current_streak} day{gamification.current_streak !== 1 ? 's' : ''}
+                </div>
+                <div className="text-sm text-gray-500">
+                  Current streak
+                  {gamification.longest_streak > 0 &&
+                    ` · Best: ${gamification.longest_streak} days`}
+                </div>
+              </div>
+            </div>
+
+            {/* Earned Badges */}
+            <div>
+              <div className="text-sm text-gray-500 mb-2">Badges earned</div>
+              <div className="flex flex-wrap gap-2">
+                {gamification.badges.filter((b) => b.earned).length === 0 ? (
+                  <span className="text-sm text-gray-400">Complete activities to earn badges</span>
+                ) : (
+                  gamification.badges
+                    .filter((b) => b.earned)
+                    .slice(0, 6)
+                    .map((badge) => (
+                      <div
+                        key={badge.id}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-50 rounded-lg border"
+                        title={badge.description}
+                      >
+                        <span>{badge.icon}</span>
+                        <span className="text-sm font-medium text-gray-700">{badge.name}</span>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -153,9 +226,12 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <div className="font-medium text-amber-900">
-                {analytics.nudge_eligible_count} application{analytics.nudge_eligible_count !== 1 ? "s" : ""} need a quick check-in
+                {analytics.nudge_eligible_count} application
+                {analytics.nudge_eligible_count !== 1 ? 's' : ''} need a quick check-in
               </div>
-              <div className="text-sm text-amber-700">Keep your contacts warm — takes about 30 seconds</div>
+              <div className="text-sm text-amber-700">
+                Keep your contacts warm — takes about 30 seconds
+              </div>
             </div>
             <div className="text-amber-600">→</div>
           </div>
@@ -171,9 +247,7 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        {loading && (
-          <div className="text-center py-8 text-gray-500">Loading...</div>
-        )}
+        {loading && <div className="text-center py-8 text-gray-500">Loading...</div>}
 
         {!loading && recentApps.length === 0 && (
           <div className="text-center py-12 text-gray-500">
@@ -197,14 +271,18 @@ export default function DashboardPage() {
                   <div className="text-sm text-gray-500">{app.role}</div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[app.status?.toLowerCase()] || "bg-gray-100 text-gray-600"}`}>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[app.status?.toLowerCase()] || 'bg-gray-100 text-gray-600'}`}
+                  >
                     {app.status}
                   </span>
                   <span className="text-sm text-gray-400">
-                    {app.applied_at ? new Date(app.applied_at).toLocaleDateString("en-SG", {
-                      day: "numeric",
-                      month: "short",
-                    }) : "—"}
+                    {app.applied_at
+                      ? new Date(app.applied_at).toLocaleDateString('en-SG', {
+                          day: 'numeric',
+                          month: 'short',
+                        })
+                      : '—'}
                   </span>
                 </div>
               </Link>
@@ -217,10 +295,10 @@ export default function DashboardPage() {
       <div className="bg-blue-50 border border-blue-100 rounded-xl p-6">
         <h2 className="font-semibold text-blue-900 mb-2">Pro tip</h2>
         <p className="text-blue-800 text-sm">
-          Tailor your resume for each application. Users who customize their resume
-          per job see 40% higher callback rates.
+          Tailor your resume for each application. Users who customize their resume per job see 40%
+          higher response rates.
         </p>
       </div>
     </div>
-  )
+  );
 }

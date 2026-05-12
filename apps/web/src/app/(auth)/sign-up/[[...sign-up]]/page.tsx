@@ -63,8 +63,8 @@ export default function SignUpPage() {
   const handleConsentsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!consents.ai_processing || !consents.ai_training) {
-      setError('Please accept all consent terms to continue');
+    if (!consents.ai_processing) {
+      setError('Please accept AI processing consent to continue');
       return;
     }
 
@@ -74,10 +74,10 @@ export default function SignUpPage() {
     setError(null);
 
     try {
-      // Update metadata with consent values
+      // Update metadata with actual consent values
       signUp.unsafeSetMetadata({
-        consents_ai_processing: true,
-        consents_ai_training: true,
+        consents_ai_processing: consents.ai_processing,
+        consents_ai_training: consents.ai_training,
       });
 
       // Move to phone step - Clerk will send verification code
@@ -147,7 +147,8 @@ export default function SignUpPage() {
           body: JSON.stringify({
             phone,
             consent_given: true,
-            ai_consents: true,
+            ai_consents: true,  // AI_PROCESSING always granted at this step
+            ai_training_consent: consents.ai_training,  // Opt-in
             clerk_verified: true,
           }),
         });
@@ -328,7 +329,7 @@ export default function SignUpPage() {
 
               <button
                 type="submit"
-                disabled={isSubmitting || !consents.ai_processing || !consents.ai_training}
+                disabled={isSubmitting || !consents.ai_processing}
                 className="w-full py-3 bg-brand-500 text-white rounded-lg hover:bg-brand-600 disabled:opacity-50"
               >
                 {isSubmitting ? 'Saving...' : 'Accept and Continue'}

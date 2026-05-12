@@ -92,6 +92,42 @@ class ConsentService:
             return True
         return False
 
+    async def record_consent_refusal(
+        self, user_id: uuid.UUID, consent_type: ConsentType
+    ) -> UserConsent:
+        """Record an explicit consent refusal (granted=False).
+
+        This creates a consent record with granted=False so we have a complete
+        audit trail even when the user declines.
+        """
+        result = await self.db.execute(
+            select(UserConsent).where(
+                and_(
+                    UserConsent.user_id == user_id,
+                    UserConsent.consent_type == consent_type,
+                )
+            )
+        )
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            # Update existing record to reflect refusal
+            existing.revoked_at = None
+            existing.granted_at = datetime.utcnow()
+            await self.db.commit()
+            logger.info("consent.refusal_recorded", user_id=str(user_id), consent_type=consent_type.value)
+            return existing
+        else:
+            new_consent = UserConsent(
+                user_id=user_id,
+                consent_type=consent_type,
+                granted_at=datetime.utcnow(),
+            )
+            self.db.add(new_consent)
+            await self.db.commit()
+            logger.info("consent.refusal_recorded", user_id=str(user_id), consent_type=consent_type.value)
+            return new_consent
+
     async def get_user_consents(self, user_id: uuid.UUID) -> dict[str, bool]:
         """Get all consent states for a user."""
         result = await self.db.execute(

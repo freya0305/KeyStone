@@ -1,25 +1,25 @@
-"use client"
+'use client';
 
-import { useState, useCallback, useRef } from 'react'
-import { apiRequest } from '@/lib/api'
+import { useState, useCallback, useRef } from 'react';
+import { apiRequest } from '@/lib/api';
 
-type DropZoneState = 'idle' | 'dragging' | 'uploading' | 'success' | 'error'
+type DropZoneState = 'idle' | 'dragging' | 'uploading' | 'success' | 'error';
 
 interface DropZoneResult {
-  state: DropZoneState
-  filename?: string
-  resumeId?: string
-  pageCount?: number
-  wordCount?: number
-  error?: string
+  state: DropZoneState;
+  filename?: string;
+  resumeId?: string;
+  pageCount?: number;
+  wordCount?: number;
+  error?: string;
 }
 
 interface DropZoneProps {
-  onFile?: (file: File, resumeId: string) => void
-  onText?: () => void
-  onUploadSuccess?: (result: DropZoneResult) => void
-  acceptedTypes?: string[]
-  maxSizeMB?: number
+  onFile?: (file: File, resumeId: string) => void;
+  onText?: () => void;
+  onUploadSuccess?: (result: DropZoneResult) => void;
+  acceptedTypes?: string[];
+  maxSizeMB?: number;
 }
 
 export function useDropZone({
@@ -28,110 +28,114 @@ export function useDropZone({
   acceptedTypes = ['.pdf', '.docx', '.doc', '.txt'],
   maxSizeMB = 10,
 }: DropZoneProps) {
-  const [result, setResult] = useState<DropZoneResult>({ state: 'idle' })
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [result, setResult] = useState<DropZoneResult>({ state: 'idle' });
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const validateFile = (file: File): string | null => {
-    const ext = '.' + file.name.split('.').pop()?.toLowerCase()
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
     if (!acceptedTypes.includes(ext)) {
-      return 'Please upload a PDF, DOCX, or TXT file'
+      return 'Please upload a PDF, DOCX, or TXT file';
     }
     if (file.size > maxSizeMB * 1024 * 1024) {
-      return `File must be smaller than ${maxSizeMB}MB`
+      return `File must be smaller than ${maxSizeMB}MB`;
     }
-    return null
-  }
+    return null;
+  };
 
-  const uploadFile = useCallback(async (file: File) => {
-    const error = validateFile(file)
-    if (error) {
-      setResult({ state: 'error', error })
-      setTimeout(() => setResult({ state: 'idle' }), 3000)
-      return
-    }
+  const uploadFile = useCallback(
+    async (file: File) => {
+      const error = validateFile(file);
+      if (error) {
+        setResult({ state: 'error', error });
+        setTimeout(() => setResult({ state: 'idle' }), 3000);
+        return;
+      }
 
-    setResult({ state: 'uploading', filename: file.name })
+      setResult({ state: 'uploading', filename: file.name });
 
-    try {
-      // Get Clerk auth token
-      let authHeaders: Record<string, string> = {}
       try {
-        const { getToken } = await import('@clerk/nextjs/client')
-        const token = await getToken()
-        if (token) {
-          authHeaders = { Authorization: `Bearer ${token}` }
+        // Get Clerk auth token
+        const { getToken } = await import('@clerk/nextjs');
+        const token = await getToken();
+        const authHeaders: Record<string, string> = token
+          ? { Authorization: `Bearer ${token}` }
+          : {};
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const response = await fetch(`${API_BASE}/job-seeker/resume/upload`, {
+          method: 'POST',
+          headers: authHeaders,
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error('Upload failed');
         }
+
+        const data = await response.json();
+        const uploadResult: DropZoneResult = {
+          state: 'success',
+          filename: file.name,
+          resumeId: data.id,
+          pageCount: data.page_count,
+          wordCount: data.word_count,
+        };
+        setResult(uploadResult);
+        onFile?.(file, data.id);
+        onUploadSuccess?.(uploadResult);
       } catch {
-        // Not in Clerk context or not authenticated
+        setResult({ state: 'error', error: 'Failed to process file. Please try again.' });
+        setTimeout(() => setResult({ state: 'idle' }), 3000);
       }
-
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      const response = await fetch(`${API_BASE}/job-seeker/resume/upload`, {
-        method: 'POST',
-        headers: authHeaders,
-        body: formData,
-      })
-
-      if (!response.ok) {
-        throw new Error('Upload failed')
-      }
-
-      const data = await response.json()
-      const uploadResult: DropZoneResult = {
-        state: 'success',
-        filename: file.name,
-        resumeId: data.id,
-        pageCount: data.page_count,
-        wordCount: data.word_count,
-      }
-      setResult(uploadResult)
-      onFile?.(file, data.id)
-      onUploadSuccess?.(uploadResult)
-    } catch {
-      setResult({ state: 'error', error: 'Failed to process file. Please try again.' })
-      setTimeout(() => setResult({ state: 'idle' }), 3000)
-    }
-  }, [onFile, onUploadSuccess, acceptedTypes, maxSizeMB])
+    },
+    [onFile, onUploadSuccess, acceptedTypes, maxSizeMB]
+  );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setResult(r => ({ ...r, state: 'dragging' }))
-  }, [])
+    e.preventDefault();
+    e.stopPropagation();
+    setResult((r) => ({ ...r, state: 'dragging' }));
+  }, []);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setResult(r => ({ ...r, state: 'idle' }))
-  }, [])
+    e.preventDefault();
+    e.stopPropagation();
+    setResult((r) => ({ ...r, state: 'idle' }));
+  }, []);
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-    const file = e.dataTransfer.files[0]
-    if (!file) {
-      setResult({ state: 'idle' })
-      return
-    }
-    await uploadFile(file)
-  }, [uploadFile])
+      const file = e.dataTransfer.files[0];
+      if (!file) {
+        setResult({ state: 'idle' });
+        return;
+      }
+      await uploadFile(file);
+    },
+    [uploadFile]
+  );
 
-  const handleFileInput = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    await uploadFile(file)
-  }, [uploadFile])
+  const handleFileInput = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      await uploadFile(file);
+    },
+    [uploadFile]
+  );
 
   const reset = useCallback(() => {
-    setResult({ state: 'idle' })
+    setResult({ state: 'idle' });
     if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+      fileInputRef.current.value = '';
     }
-  }, [])
+  }, []);
 
   return {
     result,
@@ -149,11 +153,15 @@ export function useDropZone({
       className: 'hidden',
     },
     reset,
-  }
+  };
 }
 
-export function DropZone({ onFile, onText, onUploadSuccess }: Omit<DropZoneProps, 'onFile'> & { onFile?: (file: File, resumeId: string) => void }) {
-  const { result, handlers, inputProps, reset } = useDropZone({ onFile, onText, onUploadSuccess })
+export function DropZone({
+  onFile,
+  onText,
+  onUploadSuccess,
+}: Omit<DropZoneProps, 'onFile'> & { onFile?: (file: File, resumeId: string) => void }) {
+  const { result, handlers, inputProps, reset } = useDropZone({ onFile, onText, onUploadSuccess });
 
   if (result.state === 'success' && result.filename) {
     return (
@@ -172,7 +180,7 @@ export function DropZone({ onFile, onText, onUploadSuccess }: Omit<DropZoneProps
           Upload a different file
         </button>
       </div>
-    )
+    );
   }
 
   if (result.state === 'error') {
@@ -194,7 +202,7 @@ export function DropZone({ onFile, onText, onUploadSuccess }: Omit<DropZoneProps
           </button>
         )}
       </div>
-    )
+    );
   }
 
   return (
@@ -221,8 +229,8 @@ export function DropZone({ onFile, onText, onUploadSuccess }: Omit<DropZoneProps
         {onText && (
           <button
             onClick={(e) => {
-              e.stopPropagation()
-              onText()
+              e.stopPropagation();
+              onText();
             }}
             className="px-4 py-2 border border-stone-300 dark:border-stone-600 text-sm rounded-lg hover:bg-stone-50 dark:hover:bg-stone-800"
           >
@@ -231,5 +239,5 @@ export function DropZone({ onFile, onText, onUploadSuccess }: Omit<DropZoneProps
         )}
       </div>
     </div>
-  )
+  );
 }

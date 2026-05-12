@@ -26,6 +26,8 @@ logger = structlog.get_logger()
 
 # HTTP Bearer scheme for FastAPI
 bearer_scheme = HTTPBearer(auto_error=True)
+# Optional bearer - allows anonymous requests (no token = None)
+optional_bearer_scheme = HTTPBearer(auto_error=False)
 
 
 @dataclass
@@ -191,6 +193,31 @@ async def get_current_user(
     except Exception as e:
         logger.warning("auth.token_verification_failed", error=str(e))
         raise HTTPException(status_code=401, detail="Authentication failed")
+
+
+async def optional_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[AuthUser]:
+    """Extract user from Clerk JWT if present, otherwise return None.
+
+    Use for endpoints that support both authenticated and anonymous access:
+        @app.post("/job/parse")
+        async def parse_job(user: Optional[AuthUser] = Depends(optional_current_user)):
+            if user is None:
+                # anonymous user - apply guest limits
+            ...
+
+    Anonymous users get:
+    - 1 free JD analysis per session (tracked via session cookie)
+    - No suggestion logging to suggestion_signals
+    - No outcome tracking
+    """
+    if credentials is None:
+        return None
+
+    # Re-use the full auth flow for valid tokens
+    return await get_current_user(credentials, db)
 
 
 async def get_current_b2b_user(

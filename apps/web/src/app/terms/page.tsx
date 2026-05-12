@@ -1,6 +1,6 @@
-"use client"
+'use client';
 
-import Link from "next/link"
+import Link from 'next/link';
 
 export default function TermsPage() {
   return (
@@ -26,9 +26,7 @@ export default function TermsPage() {
           {/* Agreement */}
           <section>
             <h2 className="text-xl font-semibold text-gray-900 mb-3">Agreement</h2>
-            <p className="text-gray-600">
-              By using KeyStone, you agree to these Terms of Service.
-            </p>
+            <p className="text-gray-600">By using KeyStone, you agree to these Terms of Service.</p>
           </section>
 
           {/* Use of Service */}
@@ -45,8 +43,8 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold text-gray-900 mb-3">AI-Generated Content</h2>
             <p className="text-gray-600">
-              KeyStone provides AI-generated resume suggestions. These are tools to assist your job search,
-              not professional career advice.
+              KeyStone provides AI-generated resume suggestions. These are tools to assist your job
+              search, not professional career advice.
             </p>
             <p className="text-gray-600 mt-3">
               We do not guarantee that AI suggestions will result in job interviews or offers.
@@ -61,7 +59,10 @@ export default function TermsPage() {
             <h2 className="text-xl font-semibold text-gray-900 mb-3">Your Content</h2>
             <ul className="list-disc pl-5 space-y-2 text-gray-600">
               <li>You retain all rights to your resume and application data.</li>
-              <li>You grant us a limited license to process your data for the purpose of providing the KeyStone service.</li>
+              <li>
+                You grant us a limited license to process your data for the purpose of providing the
+                KeyStone service.
+              </li>
               <li>We do not claim ownership of your resume content.</li>
             </ul>
           </section>
@@ -72,7 +73,10 @@ export default function TermsPage() {
             <ul className="list-disc pl-5 space-y-2 text-gray-600">
               <li>Do not upload false, misleading, or fraudulent information.</li>
               <li>Do not use KeyStone to spam employers.</li>
-              <li>Do not attempt to extract AI-generated content for use outside the platform in a commercial manner.</li>
+              <li>
+                Do not attempt to extract AI-generated content for use outside the platform in a
+                commercial manner.
+              </li>
             </ul>
           </section>
 
@@ -80,7 +84,8 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold text-gray-900 mb-3">Limitation of Liability</h2>
             <p className="text-gray-600">
-              KeyStone is provided &ldquo;as is.&rdquo; We do not guarantee job placement or specific outcomes.
+              KeyStone is provided &ldquo;as is.&rdquo; We do not guarantee job placement or
+              specific outcomes.
             </p>
             <p className="text-gray-600 mt-3">
               We are not liable for decisions made based on AI suggestions.
@@ -91,18 +96,44 @@ export default function TermsPage() {
           <section>
             <h2 className="text-xl font-semibold text-gray-900 mb-3">Subscription</h2>
             <ul className="list-disc pl-5 space-y-2 text-gray-600">
-              <li>Pro subscriptions are billed monthly (SGD 19/month) or annually (SGD 190/year).</li>
+              <li>Pro subscriptions are billed monthly at SGD 12/month.</li>
               <li>Cancel anytime via Settings &rarr; Manage subscription.</li>
-              <li>Refunds are not provided for partial months.</li>
+              <li>
+                A 7-day free trial is available for new Pro subscribers. No payment is required
+                during the trial period.
+              </li>
+            </ul>
+          </section>
+
+          {/* Refund Policy */}
+          <section>
+            <h2 className="text-xl font-semibold text-gray-900 mb-3">Refund Policy</h2>
+            <p className="text-gray-600">
+              We offer a 7-day money-back guarantee for new Pro subscribers. If you are not
+              satisfied with KeyStone within the first 7 days of your paid subscription, contact us
+              at{' '}
+              <a href="mailto:support@keystone.com" className="text-blue-600 hover:underline">
+                support@keystone.com
+              </a>{' '}
+              for a full refund.
+            </p>
+            <ul className="list-disc pl-5 space-y-2 text-gray-600 mt-3">
+              <li>Refunds are not provided for partial months after the 7-day guarantee period.</li>
+              <li>
+                Cancellation mid-cycle: you retain access until the end of your billing period. No
+                prorated refund is provided for unused time.
+              </li>
+              <li>
+                To request a refund within the guarantee period, email us within 7 days of your
+                first payment.
+              </li>
             </ul>
           </section>
 
           {/* Governing Law */}
           <section>
             <h2 className="text-xl font-semibold text-gray-900 mb-3">Governing Law</h2>
-            <p className="text-gray-600">
-              These terms are governed by the laws of Singapore.
-            </p>
+            <p className="text-gray-600">These terms are governed by the laws of Singapore.</p>
           </section>
 
           {/* Changes */}
@@ -123,5 +154,5 @@ export default function TermsPage() {
         <p className="text-sm text-gray-400 mt-8">Last updated: May 2026</p>
       </div>
     </div>
-  )
+  );
 }

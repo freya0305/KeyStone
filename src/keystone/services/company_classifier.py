@@ -393,6 +393,7 @@ Return ONLY valid JSON."""
             model=settings.anthropic_model_haiku,
             system_prompt=_COMPANY_TYPE_SYSTEM_PROMPT,
             user_prompt=prompt,
+            timeout=10.0,  # Analysis ≤10s per spec
             max_tokens=256,
         )
 

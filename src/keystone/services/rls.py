@@ -13,6 +13,7 @@ the primary enforcement. RLS at DB level is defense-in-depth.
 from typing import Optional
 from uuid import UUID
 import structlog
+from sqlalchemy import text
 
 logger = structlog.get_logger()
 
@@ -29,7 +30,7 @@ CREATE POLICY tenant_isolation_policy_{table} ON {table}
 
 # SQL to set the current tenant (use with SET LOCAL)
 SET_TENANT_SQL = """
-SET LOCAL app.current_tenant_id = '{tenant_id}';
+SET LOCAL app.current_tenant_id = :tenant_id;
 """
 
 
@@ -107,6 +108,6 @@ async def set_tenant_context(connection, tenant_id: UUID) -> None:
     Must be called before any queries on B2B tables.
     """
     await connection.execute(
-        f"SET LOCAL app.current_tenant_id = '{tenant_id}'"
+        text("SET LOCAL app.current_tenant_id = :tenant_id"), {"tenant_id": str(tenant_id)}
     )
     logger.debug("tenant_context_set", tenant_id=str(tenant_id))

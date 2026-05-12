@@ -166,6 +166,7 @@ Return ONLY valid JSON, no markdown or explanation."""
             model=settings.anthropic_model_sonnet,
             system_prompt=_MATCH_ASSESSMENT_SYSTEM_PROMPT,
             user_prompt=prompt,
+            timeout=10.0,  # Analysis ≤10s per spec
             max_tokens=2048,
         )
 

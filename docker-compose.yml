@@ -29,7 +29,7 @@ services:
         condition: service_healthy
       cache:
         condition: service_healthy
-    command: uvicorn keystone.main:app --host 0.0.0.0 --port 8000
+    command: /app/startup/entrypoint.sh uvicorn keystone.main:app --host 0.0.0.0 --port 8000
     healthcheck:
       test:
         [
@@ -126,6 +126,8 @@ services:
       --appendfsync everysec
       --maxmemory 512mb
       --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -169,7 +171,7 @@ services:
         condition: service_healthy
       cache:
         condition: service_healthy
-    command: celery -A keystone.workers.celery_app worker --loglevel=info --beat
+    command: /app/startup/entrypoint.sh celery -A keystone.workers.celery_app worker --loglevel=info --beat
     healthcheck:
       test:
         [

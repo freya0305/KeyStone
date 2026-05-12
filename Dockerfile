@@ -11,12 +11,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy source first (needed for package discovery)
+COPY src/ ./src/
+
+# Copy startup scripts (entrypoint for alembic migrations)
+COPY startup/ ./startup/
+RUN chmod +x startup/entrypoint.sh
+
 # Install Python deps
 COPY pyproject.toml uv.lock* ./
-RUN uv sync --frozen --no-dev
-
-# Copy source
-COPY src/ ./src/
+RUN uv sync --frozen --no-dev --no-editable
 
 # Run API
 CMD ["uvicorn", "keystone.main:app", "--host", "0.0.0.0", "--port", "8000"]

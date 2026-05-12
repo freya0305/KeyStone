@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KeyStone — Product Preview</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #e5e5e5; min-height: 100vh; }
+.mockup-container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+
+/* Header */
+.mockup-header { background: #1a1a2e; border-bottom: 1px solid #2d2d44; padding: 1rem 2rem; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+.mockup-header .logo { font-size: 1.25rem; font-weight: 700; color: #a78bfa; }
+.mockup-header .logo span { color: #f472b6; }
+.mockup-header nav a { color: #9ca3af; text-decoration: none; margin-left: 1.5rem; font-size: 0.875rem; }
+.mockup-header nav a:hover { color: #a78bfa; }
+
+/* Page indicator */
+.page-indicator { background: #1e1e32; border: 1px solid #2d2d44; border-radius: 0.75rem; padding: 1rem 1.5rem; margin-bottom: 2rem; display: flex; align-items: center; gap: 0.75rem; }
+.page-indicator .path { font-family: monospace; font-size: 0.875rem; color: #a78bfa; background: #2d2d44; padding: 0.25rem 0.75rem; border-radius: 0.375rem; }
+.page-indicator .desc { color: #9ca3af; font-size: 0.875rem; }
+.page-indicator .badge { font-size: 0.75rem; padding: 0.125rem 0.5rem; border-radius: 9999px; font-weight: 600; }
+.badge-b2c { background: #dcfce7; color: #166534; }
+.badge-b2b { background: #ede9fe; color: #6b21a8; }
+.badge-guest { background: #fef3c7; color: #92400e; }
+.badge-auth { background: #fee2e2; color: #991b1b; }
+.badge-legal { background: #f3f4f6; color: #374151; }
+
+/* Navigation tabs */
+.nav-tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 2rem; background: #1a1a2e; padding: 1rem; border-radius: 0.75rem; border: 1px solid #2d2d44; }
+.nav-tab { padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.8rem; cursor: pointer; background: #2d2d44; color: #9ca3af; border: none; transition: all 0.2s; }
+.nav-tab:hover { background: #3d3d5c; color: #e5e5e5; }
+.nav-tab.active { background: #a78bfa; color: #1a1a2e; font-weight: 600; }
+
+/* Page frames */
+.page-frame { display: none; background: #1a1a2e; border: 1px solid #2d2d44; border-radius: 0.75rem; overflow: hidden; }
+.page-frame.active { display: block; }
+
+/* Browser chrome */
+.browser-chrome { background: #2d2d44; padding: 0.5rem 1rem; display: flex; align-items: center; gap: 0.5rem; }
+.browser-chrome .dot { width: 12px; height: 12px; border-radius: 50%; }
+.dot-red { background: #ef4444; }
+.dot-yellow { background: #eab308; }
+.dot-green { background: #22c55e; }
+.browser-chrome .url { flex: 1; text-align: center; font-size: 0.75rem; color: #6b7280; font-family: monospace; background: #1a1a2e; padding: 0.25rem 1rem; border-radius: 0.375rem; margin: 0 0.5rem; }
+
+/* Page content */
+.page-content { padding: 2rem; min-height: 600px; }
+
+/* Landing page */
+.hero { text-align: center; padding: 4rem 2rem; background: linear-gradient(180deg, #1e1e32 0%, #0f0f1a 100%); }
+.hero h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 1rem; background: linear-gradient(90deg, #a78bfa, #f472b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.hero p { font-size: 1.125rem; color: #9ca3af; margin-bottom: 2rem; max-width: 600px; margin-left: auto; margin-right: auto; }
+.hero-btns { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+.btn-primary { background: linear-gradient(135deg, #a78bfa, #7c3aed); color: white; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; text-decoration: none; border: none; cursor: pointer; font-size: 0.875rem; }
+.btn-secondary { background: #2d2d44; color: #e5e5e5; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: 600; text-decoration: none; border: 1px solid #3d3d5c; cursor: pointer; font-size: 0.875rem; }
+.features { padding: 3rem 2rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+.feature-card { background: #1e1e32; border: 1px solid #2d2d44; border-radius: 0.75rem; padding: 1.5rem; }
+.feature-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: #e5e5e5; }
+.feature-card p { font-size: 0.875rem; color: #6b7280; }
+
+/* Pricing */
+.pricing-section { padding: 3rem 2rem; }
+.section-title { text-align: center; font-size: 1.5rem; font-weight: 700; margin-bottom: 2rem; color: #e5e5e5; }
+.pricing-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; max-width: 900px; margin: 0 auto; }
+.pricing-card { background: #1e1e32; border: 1px solid #2d2d44; border-radius: 0.75rem; padding: 1.5rem; position: relative; }
+.pricing-card.popular { border-color: #a78bfa; box-shadow: 0 0 20px rgba(167, 139, 250, 0.2); }
+.pricing-card .tag { position: absolute; top: -0.5rem; right: 1rem; background: #a78bfa; color: #1a1a2e; font-size: 0.625rem; font-weight: 700; padding: 0.25rem 0.75rem; border-radius: 9999px; text-transform: uppercase; }
+.pricing-card h3 { font-size: 1.125rem; font-weight: 600; margin-bottom: 0.5rem; }
+.pricing-card .price { font-size: 2rem; font-weight: 800; color: #a78bfa; margin-bottom: 1rem; }
+.pricing-card .price span { font-size: 0.875rem; font-weight: 400; color: #6b7280; }
+.pricing-card ul { list-style: none; font-size: 0.875rem; color: #9ca3af; }
+.pricing-card li { padding: 0.375rem 0; padding-left: 1.5rem; position: relative; }
+.pricing-card li::before { content: "\2713"; position: absolute; left: 0; color: #22c55e; }
+
+/* Dashboard */
+.dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+.dashboard-header h1 { font-size: 1.5rem; font-weight: 700; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+.stat-card { background: #1e1e32; border: 1px solid #2d2d44; border-radius: 0.75rem; padding: 1rem; }
+.stat-card .label { font-size: 0.75rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
+.stat-card .value { font-size: 1.75rem; font-weight: 700; color: #e5e5e5; margin-top: 0.25rem; }
+.stat-card .sub { font-size: 0.75rem; color: #6b7280; }
+.stat-card.highlight { border-color: #eab308; background: linear-gradient(135deg, #1e1e32, #1e1e32); }
+.stat-card.highlight .value { color: #eab308; }
+.quick-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem; }
+.action-card { background: #1e1e32; border: 1px solid #2d2d44; border-radius: 0.75rem; padding: 1.5rem; cursor: pointer; transition: all 0.2s; text-align: center; }
+.action-card:hover { border-color: #a78bfa; transform: translateY(-2px); }
+.action-card h3 { font-size: 0.875rem; font-weight: 600; color: #e5e5e5; }
+.applications-list { background: #1e1e32; border: 1px solid #2d2d44; border-radius: 0.75rem; padding: 1.5rem; }
+.applications-list h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
+.app-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #2d2d44; }
+.app-item:last-child { border-bottom: none; }
+.app-item .company { font-weight: 600; font-size: 0.875rem; }
+.app-item .role { font-size: 0.75rem; color: #6b7280; }
+.status-badge { font-size: 0.625rem; padding: 0.25rem 0.75rem; border-radius: 9999px; font-weight: 600; text-transform: uppercase; }
+.status-applied { background: #dbeafe; color: #1e40af; }
+.status-screening { background: #fef3c7; color: #92400e; }
+.status-interview { background: #dcfce7; color: #166534; }
+.status-offer { background: #22c55e; color: white; }
+.status-rejected { background: #fee2e2; color: #991b1b; }
+
+/* Analyse page */
+.analyse-container { max-width: 800px; margin: 0 auto; padding: 2rem; }
+.step-indicator { display: flex; justify-content: center; gap: 0.5rem; margin-bottom: 3rem; }
+.step { display: flex; align-items: center; gap: 0.5rem; }
+.step-num { width: 2rem; height: 2rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600; }
+.step-done { background: #22c55e; color: white; }
+.step-active { background: #a78bfa; color: white; }
+.step-pending { background: #2d2d44; color: #6b7280; }
+.step-label { font-size: 0.75rem; color: #6b7280; }
+.step.active .step-label { color: #a78bfa; font-weight: 600; }
+.step-line { flex: 1; height: 2px; background: #2d2d44; align-self: center; max-width: 60px; }
+.analyse-card { background: #1e1e32; border: 1px solid #2d2d44; border-radius: 0.75rem; padding: 2rem; margin-bottom: 1.5rem; }
+.analyse-card h2 { font-size: 1.125rem; font-weight: 600; margin-bottom: 1rem; }
+.form-group { margin-bottom: 1rem; }
+.form-group label { display: block; font-size: 0.875rem; font-weight: 500; margin-bottom: 0.5rem; color: #e5e5e5; }
+.form-group input, .form-group textarea, .form-group select { width: 100%; padding: 0.75rem; border-radius: 0.5rem; border: 1px solid #2d2d44; background: #0f0f1a; color: #e5e5e5; font-size: 0.875rem; }
+.form-group textarea { min-height: 120px; resize: vertical; }
+.dropzone { border: 2px dashed #3d3d5c; border-radius: 0.5rem; padding: 3rem; text-align: center; cursor: pointer; transition: all 0.2s; }
+.dropzone:hover { border-color: #a78bfa; background: rgba(167, 139, 250, 0.05); }
+.dropzone p { color: #6b7280; font-size: 0.875rem; }
+.dropzone .icon { font-size: 2rem; margin-bottom: 0.5rem; }
+.match-results { margin-top: 2rem; }
+.match-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+.match-item { text-align: center; padding: 1rem; background: #0f0f1a; border-radius: 0.5rem; }
+.match-item .count { font-size: 2rem; font-weight: 700; }
+.match-item .label { font-size: 0.75rem; color: #6b7280; }
+.match-strong .count { color: #22c55e; }
+.match-transferable .count { color: #3b82f6; }
+.match-addressable .count { color: #eab308; }
+.match-fundamental .count { color: #ef4444; }
+.suggestion-card { background: #0f0f1a; border: 1px solid #2d2d44; border-radius: 0.5rem; padding: 1rem; margin-bottom: 0.75rem; }
+.suggestion-card .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+.suggestion-card .badge { font-size: 0.625rem; padding: 0.125rem 0.5rem; border-radius: 9999px; font-weight: 600; }
+.badge-strong { background: #dcfce7; color: #166534; }
+.badge-transferable { background: #dbeafe; color: #1e40af; }
+.badge-addressable { background: #fef3c7; color: #92400e; }
+.badge-fundamental { background: #fee2e2; color: #991b1b; }
+.suggestion-card .original { font-size: 0.75rem; color: #6b7280; margin-bottom: 0.5rem; }
+.suggestion-card .suggested { font-size: 0.875rem; color: #22c55e; font-weight: 500; margin-bottom: 0.5rem; }
+.suggestion-card .rationale { font-size: 0.75rem; color: #9ca3af; font-style: italic; }
+.suggestion-card .actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; }
+.suggestion-card .actions button { padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-size: 0.75rem; font-weight: 500; cursor: pointer; border: 1px solid #2d2d44; background: transparent; color: #9ca3af; }
+.suggestion-card .actions button:first-child { background: #22c55e; color: white; border-color: #22c55e; }
+
+/* Recruiter JD page */
+.jd-container { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; max-width: 1100px; margin: 0 auto; }
+.jd-form { background: #1e1e32; border: 1px solid #2d2d44; border-radius: 0.75rem; padding: 1.5rem; }
+.jd-result { background: #1e1e32; border: 1px solid #2d2d44; border-radius: 0.75rem; padding: 1.5rem; }
+.skills-input { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.5rem; background: #0f0f1a; border-radius: 0.5rem; min-height: 44px; }
+.skills-input input { flex: 1; min-width: 120px; border: none; background: transparent; color: #e5e5e5; font-size: 0.875rem; outline: none; }
+.skill-tag { background: #a78bfa; color: #1a1a2e; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; display: flex; align-items: center; gap: 0.25rem; }
+.skill-tag .remove { cursor: pointer; font-size: 0.875rem; }
+.jd-preview { background: #0f0f1a; border-radius: 0.5rem; padding: 1.5rem; min-height: 300px; }
+.jd-preview h3 { font-size: 1.125rem; font-weight: 600; margin-bottom: 0.5rem; }
+.jd-preview .company { color: #a78bfa; font-size: 0.875rem; margin-bottom: 1rem; }
+.jd-preview .section { margin-bottom: 1rem; }
+.jd-preview .section h4 { font-size: 0.75rem; text-transform: uppercase; color: #6b7280; margin-bottom: 0.25rem; }
+.jd-preview .section p { font-size: 0.875rem; color: #e5e5e5; }
+
+/* Sign up page */
+.auth-container { max-width: 400px; margin: 0 auto; padding: 3rem 1rem; }
+.auth-card { background: #1e1e32; border: 1px solid #2d2d44; border-radius: 0.75rem; padding: 2rem; }
+.auth-card h1 { font-size: 1.5rem; font-weight: 700; text-align: center; margin-bottom: 0.5rem; }
+.auth-card .subtitle { text-align: center; color: #6b7280; font-size: 0.875rem; margin-bottom: 2rem; }
+.step-content { margin-bottom: 1.5rem; }
+.step-content h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
+.consent-item { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem; background: #0f0f1a; border-radius: 0.5rem; margin-bottom: 0.5rem; }
+.consent-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: #a78bfa; }
+.consent-item .text { flex: 1; }
+.consent-item .title { font-size: 0.875rem; font-weight: 500; margin-bottom: 0.125rem; }
+.consent-item .desc { font-size: 0.75rem; color: #6b7280; }
+.consent-item.required .title::after { content: " *"; color: #ef4444; }
+.otp-input { display: flex; gap: 0.5rem; justify-content: center; margin: 1.5rem 0; }
+.otp-input input { width: 48px; height: 56px; text-align: center; font-size: 1.5rem; font-weight: 700; border: 2px solid #2d2d44; border-radius: 0.5rem; background: #0f0f1a; color: #e5e5e5; }
+.otp-input input:focus { border-color: #a78bfa; outline: none; }
+
+/* Legal pages */
+.legal-container { max-width: 720px; margin: 0 auto; padding: 3rem 1rem; }
+.legal-content { background: #1e1e32; border: 1px solid #2d2d44; border-radius: 0.75rem; padding: 2.5rem; }
+.legal-content h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 2rem; }
+.legal-content h2 { font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.75rem; color: #a78bfa; }
+.legal-content p { font-size: 0.875rem; color: #9ca3af; line-height: 1.7; margin-bottom: 1rem; }
+.legal-content ul { margin-left: 1.5rem; margin-bottom: 1rem; font-size: 0.875rem; color: #9ca3af; line-height: 1.7; }
+.legal-content li { margin-bottom: 0.25rem; }
+
+/* Nav between mockup pages */
+.page-nav { display: flex; justify-content: space-between; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #2d2d44; }
+.page-nav button { padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.875rem; cursor: pointer; background: #2d2d44; color: #e5e5e5; border: 1px solid #3d3d5c; }
+.page-nav button:hover { background: #3d3d5c; }
+.page-nav button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* Info boxes */
+.info-box { background: #1e1e32; border: 1px solid #2d2d44; border-radius: 0.75rem; padding: 1rem; margin-bottom: 1rem; }
+.info-box.success { border-color: #22c55e; background: rgba(34, 197, 94, 0.1); }
+.info-box.warning { border-color: #eab308; background: rgba(234, 179, 8, 0.1); }
+.info-box.info { border-color: #3b82f6; background: rgba(59, 130, 246, 0.1); }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .quick-actions { grid-template-columns: 1fr; }
+  .jd-container { grid-template-columns: 1fr; }
+  .pricing-grid { grid-template-columns: 1fr; }
+  .match-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+
+<div class="mockup-container">
+  <!-- Header -->
+  <header class="mockup-header">
+    <div class="logo">Key<span>Stone</span></div>
+    <nav>
+      <a href="#landing" onclick="showPage('landing')">Home</a>
+      <a href="#pricing" onclick="showPage('pricing')">Pricing</a>
+      <a href="#analyse" onclick="showPage('analyse')">Free Analysis</a>
+      <a href="#recruiter" onclick="showPage('recruiter-dash')">For Recruiters</a>
+      <a href="#dashboard" onclick="showPage('dashboard')">Dashboard</a>
+    </nav>
+  </header>
+
+  <!-- Navigation tabs -->
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showPage('landing')" data-page="landing">Job Seeker B2C</button>
+    <button class="nav-tab" onclick="showPage('pricing')" data-page="pricing">Pricing</button>
+    <button class="nav-tab" onclick="showPage('analyse')" data-page="analyse">Free Analysis (Guest)</button>
+    <button class="nav-tab" onclick="showPage('signup')" data-page="signup">Sign Up / Log In</button>
+    <button class="nav-tab" onclick="showPage('dashboard')" data-page="dashboard">Dashboard</button>
+    <button class="nav-tab" onclick="showPage('applications')" data-page="applications">Applications</button>
+    <button class="nav-tab" onclick="showPage('recruiter-dash')" data-page="recruiter-dash">Recruiter</button>
+    <button class="nav-tab" onclick="showPage('recruiter-jd')" data-page="recruiter-jd">JD Generator</button>
+    <button class="nav-tab" onclick="showPage('legal')" data-page="legal">Legal</button>
+  </div>
+
+  <!-- ========== LANDING PAGE ========== -->
+  <div class="page-frame active" id="page-landing">
+    <div class="browser-chrome">
+      <div class="dot dot-red"></div><div class="dot dot-yellow"></div><div class="dot dot-green"></div>
+      <div class="url">keystone.sg</div>
+    </div>
+    <div class="page-content" style="padding: 0;">
+      <div class="hero">
+        <h1>Land your dream job in Singapore with AI-powered precision</h1>
+        <p>AI-powered resume tailoring, job matching, and application tracking for Singapore job seekers</p>
+        <div class="hero-btns">
+          <button class="btn-primary" onclick="showPage('analyse')">Try Free</button>
+          <button class="btn-secondary" onclick="showPage('pricing')">View Pricing</button>
+        </div>
+        <p style="margin-top: 1rem; font-size: 0.875rem; color: #6b7280;">No signup required to start - First job analysis is completely free</p>
+      </div>
+
+      <div class="features">
+        <div class="feature-card">
+          <h3>Precision Resume Tailoring</h3>
+          <p>AI analyzes job descriptions and optimizes your resume content for each application, significantly improving pass rates</p>
+        </div>
+        <div class="feature-card">
+          <h3>4-Tier Job Matching</h3>
+          <p>Strong / Transferable / Addressable / Fundamental - Know exactly where you stand against each role</p>
+        </div>
+        <div class="feature-card">
+          <h3>Application Tracking</h3>
+          <p>Track every application status and follow-up timeline - never miss an opportunity</p>
+        </div>
+        <div class="feature-card">
+          <h3>Singapore- Specific</h3>
+          <p>Understand NS background, GLC terminology, and polytechnic education levels - compliant with Singapore workplace standards</p>
+        </div>
+        <div class="feature-card">
+          <h3>PDPA Compliant</h3>
+          <p>Data stored in Singapore, never used for AI training, NRIC automatically anonymized</p>
+        </div>
+        <div class="feature-card">
+          <h3>Get Started in Minutes</h3>
+          <p>No signup required to start - complete your first job analysis in 3 minutes</p>
+        </div>
+      </div>
+
+      <div class="pricing-section">
+        <h2 class="section-title">Simple, Transparent Pricing</h2>
+        <div class="pricing-grid">
+          <div class="pricing-card">
+            <h3>Free</h3>
+            <div class="price">SGD 0<span>/mo</span></div>
+            <ul>
+              <li>3 job analyses/month</li>
+              <li>Up to 3 suggestions per analysis</li>
+              <li>Resume upload</li>
+              <li>Application status tracking</li>
+            </ul>
+            <button class="btn-secondary" style="width: 100%; margin-top: 1rem;" onclick="showPage('analyse')">Get Started Free</button>
+          </div>
+          <div class="pricing-card popular">
+            <div class="tag">Recommended</div>
+            <h3>Pro</h3>
+            <div class="price">SGD 12<span>/mo</span></div>
+            <ul>
+              <li>Unlimited job analyses</li>
+              <li>Unlimited AI suggestions</li>
+              <li>Resume version control</li>
+              <li>Full application tracking</li>
+              <li>Response rate analytics</li>
+              <li>7-day free trial</li>
+            </ul>
+            <button class="btn-primary" style="width: 100%; margin-top: 1rem;" onclick="showPage('signup')">Upgrade Now</button>
+          </div>
+        </div>
+        <p style="text-align: center; margin-top: 1.5rem; font-size: 0.875rem; color: #6b7280;">
+          <a href="#" onclick="showPage('pricing'); return false;" style="color: #a78bfa;">View Recruiter Pricing</a>
+        </p>
+      </div>
+    </div>
+    <div class="page-nav">
+      <button disabled>Home</button>
+      <button onclick="showPage('pricing')">Pricing</button>
+    </div>
+  </div>
+
+  <!-- ========== PRICING PAGE ========== -->
+  <div class="page-frame" id="page-pricing">
+    <div class="browser-chrome">
+      <div class="dot dot-red"></div><div class="dot dot-yellow"></div><div class="dot dot-green"></div>
+      <div class="url">keystone.sg/pricing</div>
+    </div>
+    <div class="page-content">
+      <div style="text-align: center; margin-bottom: 3rem;">
+        <h1 style="font-size: 2rem; font-weight: 800; margin-bottom: 0.5rem;">Simple, Transparent Pricing</h1>
+        <p style="color: #9ca3af;">Choose the plan that fits you - no annual contracts required</p>
+      </div>
+
+      <!-- B2C Section -->
+      <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1.5rem; color: #e5e5e5;">For Job Seekers</h2>
+      <div class="pricing-grid" style="margin-bottom: 3rem;">
+        <div class="pricing-card">
+          <h3>Free</h3>
+          <div class="price">SGD 0<span>/mo</span></div>
+          <ul>
+            <li>3 job analyses/month</li>
+            <li>3 AI suggestions per analysis</li>
+            <li>Resume upload</li>
+            <li>Application status tracking</li>
+          </ul>
+        </div>
+        <div class="pricing-card popular">
+          <div class="tag">Recommended</div>
+          <h3>Pro</h3>
+          <div class="price">SGD 12<span>/mo</span></div>
+          <ul>
+            <li>Unlimited job analyses</li>
+            <li>Unlimited AI suggestions</li>
+            <li>Resume version control</li>
+            <li>Full application tracking</li>
+            <li>Response rate analytics</li>
+            <li>7-day free trial</li>
+          </ul>
+          <button class="btn-primary" style="width: 100%; margin-top: 1rem;">Start Free Trial</button>
+        </div>
+      </div>
+
+      <!-- B2B Section -->
+      <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1.5rem; color: #e5e5e5;">For Recruiters / Agencies</h2>
+      <div class="pricing-grid">
+        <div class="pricing-card">
+          <h3>Agency Team</h3>
+          <div class="price">SGD 79<span>/mo</span></div>
+          <ul>
+            <li>5 users</li>
+            <li>100 JD generations/month</li>
+            <li>Skill frequency database</li>
+            <li>JD version control</li>
+          </ul>
+        </div>
+        <div class="pricing-card popular">
+          <div class="tag">Most Popular</div>
+          <h3>Agency Pro</h3>
+          <div class="price">SGD 199<span>/mo</span></div>
+          <ul>
+            <li>10 users</li>
+            <li>400 JD generations/month</li>
+            <li>Brand templates</li>
+            <li>Skill frequency database</li>
+          </ul>
+        </div>
+        <div class="pricing-card">
+          <h3>Agency Enterprise</h3>
+          <div class="price">SGD 449<span>/mo</span></div>
+          <ul>
+            <li>Unlimited users</li>
+            <li>Unlimited JD generations</li>
+            <li>Team dashboard</li>
+            <li>Brand templates</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="info-box info" style="margin-top: 2rem;">
+        <strong style="color: #3b82f6;">Free Recruiter Tier:</strong>
+        <span style="color: #9ca3af; font-size: 0.875rem;">10 JD generations/month, 1 user, no credit card required</span>
+      </div>
+
+      <div style="text-align: center; margin-top: 2rem;">
+        <a href="#" onclick="showPage('recruiter-terms'); return false;" style="color: #a78bfa; font-size: 0.875rem;">Read Recruiter Terms of Service</a>
+      </div>
+    </div>
+    <div class="page-nav">
+      <button onclick="showPage('landing')">Home</button>
+      <button onclick="showPage('signup')">Sign Up</button>
+    </div>
+  </div>
+
+  <!-- ========== ANALYSE PAGE (GUEST FLOW) ========== -->
+  <div class="page-frame" id="page-analyse">
+    <div class="browser-chrome">
+      <div class="dot dot-red"></div><div class="dot dot-yellow"></div><div class="dot dot-green"></div>
+      <div class="url">keystone.sg/analyse</div>
+    </div>
+    <div class="analyse-container">
+      <div class="step-indicator">
+        <div class="step active">
+          <div class="step-num step-active">1</div>
+          <span class="step-label">Job Description</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step">
+          <div class="step-num step-pending">2</div>
+          <span class="step-label">Upload Resume</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step">
+          <div class="step-num step-pending">3</div>
+          <span class="step-label">Analyzing</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="step">
+          <div class="step-num step-pending">4</div>
+          <span class="step-label">View Results</span>
+        </div>
+      </div>
+
+      <div class="analyse-card">
+        <h2>Enter Job Description</h2>
+        <div class="form-group">
+          <label>Choose input method</label>
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+            <button class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.8rem;">Paste URL</button>
+            <button class="btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.8rem;">Paste Text</button>
+          </div>
+          <input type="text" placeholder="Paste MyCareersFuture job URL..." style="margin-bottom: 0.75rem;">
+          <textarea placeholder="Or paste job description directly..."></textarea>
+        </div>
+        <button class="btn-primary" style="width: 100%;">Continue</button>
+      </div>
+
+      <!-- Preview of what results look like -->
+      <div class="match-results" style="margin-top: 2rem;">
+        <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">Analysis Results Preview</h3>
+        <div class="match-grid">
+          <div class="match-item match-strong">
+            <div class="count">5</div>
+            <div class="label">Strong</div>
+          </div>
+          <div class="match-item match-transferable">
+            <div class="count">3</div>
+            <div class="label">Transferable</div>
+          </div>
+          <div class="match-item match-addressable">
+            <div class="count">2</div>
+            <div class="label">Addressable</div>
+          </div>
+          <div class="match-item match-fundamental">
+            <div class="count">1</div>
+            <div class="label">Fundamental Gap</div>
+          </div>
+        </div>
+
+        <div class="suggestion-card">
+          <div class="header">
+            <span class="badge badge-strong">Strong</span>
+            <span style="font-size: 0.75rem; color: #6b7280;">Section: Skills</span>
+          </div>
+          <div class="original">Original: "5 years of Python experience"</div>
+          <div class="suggested">Suggested: "5 years of Python experience including production ML pipeline development with scikit-learn and pandas"</div>
+          <div class="rationale">Reason: Quantifies ML-related experience, better aligned with Singapore tech company hiring preferences</div>
+          <div class="actions">
+            <button>Accept</button>
+            <button>Edit</button>
+            <button>Skip</button>
+          </div>
+        </div>
+
+        <div class="suggestion-card">
+          <div class="header">
+            <span class="badge badge-transferable">Transferable</span>
+            <span style="font-size: 0.75rem; color: #6b7280;">Section: Experience</span>
+          </div>
+          <div class="original">Original: "Led team of 3 developers"</div>
+          <div class="suggested">Suggested: "Led cross-functional team of 3 developers and 2 data analysts, delivering data platform used by 10k+ users"</div>
+          <div class="rationale">Reason: Adds team scale and business impact, better aligned with Singapore senior role expectations</div>
+          <div class="actions">
+            <button>Accept</button>
+            <button>Edit</button>
+            <button>Skip</button>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.75rem; margin-top: 1.5rem;">
+          <button class="btn-secondary" style="flex: 1;">Export DOCX</button>
+          <button class="btn-primary" style="flex: 1;">Export PDF</button>
+        </div>
+
+        <div class="info-box warning" style="margin-top: 1.5rem;">
+          <span style="color: #eab308;">Guest preview mode. Sign up after 3 free analyses to continue. All data handled per PDPA.</span>
+        </div>
+      </div>
+    </div>
+    <div class="page-nav">
+      <button onclick="showPage('landing')">Home</button>
+      <button onclick="showPage('signup')">Sign Up to Continue</button>
+    </div>
+  </div>
+
+  <!-- ========== SIGN UP PAGE ========== -->
+  <div class="page-frame" id="page-signup">
+    <div class="browser-chrome">
+      <div class="dot dot-red"></div><div class="dot dot-yellow"></div><div class="dot dot-green"></div>
+      <div class="url">keystone.sg/sign-up</div>
+    </div>
+    <div class="auth-container">
+      <div class="auth-card">
+        <h1>Create Account</h1>
+        <p class="subtitle">3 steps to sign up - 7 days free trial</p>
+
+        <!-- Progress -->
+        <div style="display: flex; justify-content: center; gap: 0.5rem; margin-bottom: 2rem;">
+          <div style="width: 8px; height: 8px; border-radius: 50%; background: #a78bfa;"></div>
+          <div style="width: 8px; height: 8px; border-radius: 50%; background: #2d2d44;"></div>
+          <div style="width: 8px; height: 8px; border-radius: 50%; background: #2d2d44;"></div>
+          <div style="width: 8px; height: 8px; border-radius: 50%; background: #2d2d44;"></div>
+        </div>
+
+        <div class="step-content">
+          <h2>Basic Information</h2>
+          <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" placeholder="John Tan">
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" placeholder="john@example.com">
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" placeholder="Minimum 8 characters">
+          </div>
+        </div>
+
+        <button class="btn-primary" style="width: 100%;">Continue</button>
+
+        <div style="text-align: center; margin-top: 1.5rem;">
+          <span style="color: #6b7280; font-size: 0.875rem;">Already have an account?</span>
+          <a href="#" onclick="showPage('signin'); return false;" style="color: #a78bfa; font-size: 0.875rem; margin-left: 0.25rem;">Log In</a>
+        </div>
+      </div>
+
+      <!-- Consent step preview -->
+      <div class="auth-card" style="margin-top: 1rem;">
+        <div class="step-content">
+          <h2>Privacy and Data Consent</h2>
+          <p style="font-size: 0.75rem; color: #6b7280; margin-bottom: 1rem;">Data processing terms you agree to when using KeyStone</p>
+
+          <div class="consent-item required">
+            <input type="checkbox" checked disabled>
+            <div class="text">
+              <div class="title">AI Content Processing (Required)</div>
+              <div class="desc">Allow AI to analyze your resume and job descriptions to provide tailored suggestions</div>
+            </div>
+          </div>
+
+          <div class="consent-item">
+            <input type="checkbox">
+            <div class="text">
+              <div class="title">AI Training Contribution (Optional)</div>
+              <div class="desc">Allow anonymized suggestion data to improve AI models (no personal identifying information)</div>
+            </div>
+          </div>
+
+          <div class="consent-item" style="background: #fef3c7; border: 1px solid #f59e0b;">
+            <div class="text">
+              <div class="title" style="color: #92400e;">Data Security</div>
+              <div class="desc" style="color: #b45309;">All data stored on Singapore AWS, never used for AI training, NRIC automatically anonymized</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- OTP step preview -->
+      <div class="auth-card" style="margin-top: 1rem;">
+        <div class="step-content">
+          <h2>Verify Phone Number</h2>
+          <p style="font-size: 0.875rem; color: #9ca3af; margin-bottom: 1rem;">6-digit code sent to +65 9123 4567</p>
+          <div class="otp-input">
+            <input type="text" maxlength="1" value="8">
+            <input type="text" maxlength="1" value="4">
+            <input type="text" maxlength="1" value="2">
+            <input type="text" maxlength="1" value="1">
+            <input type="text" maxlength="1" value="0">
+            <input type="text" maxlength="1" value="6">
+          </div>
+          <button class="btn-primary" style="width: 100%;">Verify and Complete Sign Up</button>
+          <p style="text-align: center; margin-top: 1rem; font-size: 0.75rem; color: #6b7280;">Resend code in 60 seconds</p>
+        </div>
+      </div>
+    </div>
+    <div class="page-nav">
+      <button onclick="showPage('pricing')">Pricing</button>
+      <button onclick="showPage('dashboard')">Dashboard</button>
+    </div>
+  </div>
+
+  <!-- ========== DASHBOARD ========== -->
+  <div class="page-frame" id="page-dashboard">
+    <div class="browser-chrome">
+      <div class="dot dot-red"></div><div class="dot dot-yellow"></div><div class="dot dot-green"></div>
+      <div class="url">keystone.sg/app</div>
+    </div>
+    <div class="page-content">
+      <div class="dashboard-header">
+        <h1>Welcome back, John</h1>
+        <div style="display: flex; gap: 0.5rem;">
+          <span style="font-size: 0.75rem; padding: 0.25rem 0.75rem; background: #22c55e; color: white; border-radius: 9999px;">Pro</span>
+          <button class="btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">Settings</button>
+        </div>
+      </div>
+
+      <!-- Auto-close banner -->
+      <div class="info-box warning" style="margin-bottom: 1.5rem;">
+        <strong style="color: #eab308;">You have 3 applications with no updates in 30+ days. They will be auto-closed. </strong>
+        <a href="#" style="color: #a78bfa;">View Details</a>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="label">Total Applications</div>
+          <div class="value">24</div>
+          <div class="sub">All time</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">In Progress</div>
+          <div class="value">8</div>
+          <div class="sub">Past 30 days</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Responses</div>
+          <div class="value">3</div>
+          <div class="sub">Past 30 days</div>
+        </div>
+        <div class="stat-card highlight">
+          <div class="label">Need Follow-up</div>
+          <div class="value">5</div>
+          <div class="sub">No progress in 14+ days</div>
+        </div>
+      </div>
+
+      <div class="quick-actions">
+        <div class="action-card" onclick="showPage('applications')">
+          <h3>New Application</h3>
+        </div>
+        <div class="action-card" onclick="showPage('applications')">
+          <h3>Application List</h3>
+        </div>
+        <div class="action-card" onclick="showPage('analyse')">
+          <h3>Analyze Job</h3>
+        </div>
+      </div>
+
+      <div class="applications-list">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h2>Recent Applications</h2>
+          <a href="#" onclick="showPage('applications'); return false;" style="color: #a78bfa; font-size: 0.875rem;">View All</a>
+        </div>
+        <div class="app-item">
+          <div>
+            <div class="company">DBS Bank</div>
+            <div class="role">Software Engineer - 14 days ago</div>
+          </div>
+          <span class="status-badge status-interview">Interview</span>
+        </div>
+        <div class="app-item">
+          <div>
+            <div class="company">Grab</div>
+            <div class="role">Data Analyst - 7 days ago</div>
+          </div>
+          <span class="status-badge status-screening">Screening</span>
+        </div>
+        <div class="app-item">
+          <div>
+            <div class="company">Shopee</div>
+            <div class="role">Backend Engineer - 3 days ago</div>
+          </div>
+          <span class="status-badge status-applied">Applied</span>
+        </div>
+        <div class="app-item">
+          <div>
+            <div class="company">GovTech</div>
+            <div class="role">Full Stack Developer - 1 day ago</div>
+          </div>
+          <span class="status-badge status-applied">Applied</span>
+        </div>
+      </div>
+
+      <div class="info-box success" style="margin-top: 1.5rem;">
+        <strong style="color: #22c55e;">Pro Tip:</strong>
+        <span style="color: #9ca3af; font-size: 0.875rem;">For your DBS application, we detected your resume is missing "production ML pipeline" experience. Consider updating to improve pass rate.</span>
+      </div>
+    </div>
+    <div class="page-nav">
+      <button onclick="showPage('landing')">Home</button>
+      <button onclick="showPage('applications')">Applications</button>
+    </div>
+  </div>
+
+  <!-- ========== APPLICATIONS PAGE ========== -->
+  <div class="page-frame" id="page-applications">
+    <div class="browser-chrome">
+      <div class="dot dot-red"></div><div class="dot dot-yellow"></div><div class="dot dot-green"></div>
+      <div class="url">keystone.sg/app/applications</div>
+    </div>
+    <div class="page-content">
+      <div class="dashboard-header">
+        <h1>My Applications</h1>
+        <button class="btn-primary" onclick="showPage('dashboard')">+ New Application</button>
+      </div>
+
+      <div class="info-box warning" style="margin-bottom: 1.5rem;">
+        <strong style="color: #eab308;">8 applications need follow-up (no progress in 14+ days) </strong>
+        <a href="#" style="color: #a78bfa;">Batch Update</a>
+      </div>
+
+      <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+        <select style="padding: 0.5rem 1rem; border-radius: 0.5rem; border: 1px solid #2d2d44; background: #1e1e32; color: #e5e5e5; font-size: 0.875rem;">
+          <option>All Status</option>
+          <option>Applied</option>
+          <option>Screening</option>
+          <option>Interview</option>
+          <option>Offer</option>
+          <option>Rejected</option>
+        </select>
+        <select style="padding: 0.5rem 1rem; border-radius: 0.5rem; border: 1px solid #2d2d44; background: #1e1e32; color: #e5e5e5; font-size: 0.875rem;">
+          <option>Past 30 days</option>
+          <option>Past 90 days</option>
+          <option>All time</option>
+        </select>
+        <button class="btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.875rem;">Batch Update Mode</button>
+      </div>
+
+      <div class="applications-list">
+        <div class="app-item">
+          <div>
+            <div class="company">DBS Bank</div>
+            <div class="role">Software Engineer - Singapore - 14 days ago</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <span class="status-badge status-interview">Interview</span>
+            <button style="background: #22c55e; color: white; border: none; padding: 0.25rem 0.75rem; border-radius: 0.375rem; font-size: 0.75rem; cursor: pointer;">Got Response</button>
+          </div>
+        </div>
+        <div class="app-item">
+          <div>
+            <div class="company">Grab</div>
+            <div class="role">Data Analyst - Singapore - 7 days ago</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <span class="status-badge status-screening">Screening</span>
+            <button style="background: #eab308; color: #1a1a2e; border: none; padding: 0.25rem 0.75rem; border-radius: 0.375rem; font-size: 0.75rem; cursor: pointer;">No News</button>
+          </div>
+        </div>
+        <div class="app-item">
+          <div>
+            <div class="company">Shopee</div>
+            <div class="role">Backend Engineer - Singapore - 3 days ago</div>
+          </div>
+          <span class="status-badge status-applied">Applied</span>
+        </div>
+        <div class="app-item">
+          <div>
+            <div class="company">GovTech</div>
+            <div class="role">Full Stack Developer - Singapore - 1 day ago</div>
+          </div>
+          <span class="status-badge status-applied">Applied</span>
+        </div>
+        <div class="app-item">
+          <div>
+            <div class="company">SEA Group</div>
+            <div class="role">Senior Developer - Singapore - 21 days ago</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <span class="status-badge status-rejected">Rejected</span>
+            <button style="background: #6b7280; color: white; border: none; padding: 0.25rem 0.75rem; border-radius: 0.375rem; font-size: 0.75rem; cursor: pointer;">Skip</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: center; margin-top: 1.5rem;">
+        <button class="btn-secondary" style="font-size: 0.875rem;">Load More</button>
+      </div>
+    </div>
+    <div class="page-nav">
+      <button onclick="showPage('dashboard')">Dashboard</button>
+      <button onclick="showPage('analytics')">Analytics</button>
+    </div>
+  </div>
+
+  <!-- ========== RECRUITER DASHBOARD ========== -->
+  <div class="page-frame" id="page-recruiter-dash">
+    <div class="browser-chrome">
+      <div class="dot dot-red"></div><div class="dot dot-yellow"></div><div class="dot dot-green"></div>
+      <div class="url">keystone.sg/recruiter</div>
+    </div>
+    <div class="page-content">
+      <div style="text-align: center; margin-bottom: 2rem;">
+        <h1 style="font-size: 1.5rem; font-weight: 700;">Recruiter Dashboard</h1>
+        <p style="color: #9ca3af; font-size: 0.875rem;">Agency Pro Plan - 47/Unlimited JD generations remaining</p>
+      </div>
+
+      <div class="quick-actions" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 2rem;">
+        <div class="action-card" onclick="showPage('recruiter-jd')" style="border-color: #a78bfa;">
+          <h3>New Job Description</h3>
+          <p style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">AI-generate JD</p>
+        </div>
+        <div class="action-card">
+          <h3>Template Management</h3>
+          <p style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">Brand templates</p>
+        </div>
+        <div class="action-card">
+          <h3>Team Members</h3>
+          <p style="font-size: 0.75rem; color: #6b7280; margin-top: 0.25rem;">Invite colleagues</p>
+        </div>
+      </div>
+
+      <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr);">
+        <div class="stat-card">
+          <div class="label">Job Descriptions</div>
+          <div class="value">12</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Share Links</div>
+          <div class="value">8</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Team Members</div>
+          <div class="value">3</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">This Month</div>
+          <div class="value" style="color: #22c55e;">Unlimited</div>
+        </div>
+      </div>
+
+      <div class="applications-list" style="margin-top: 1.5rem;">
+        <h2 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">Recent Job Descriptions</h2>
+        <div class="app-item">
+          <div>
+            <div class="company">Senior Python Engineer</div>
+            <div class="role">Tech Startup - 2 days ago</div>
+          </div>
+          <button class="btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">Edit</button>
+        </div>
+        <div class="app-item">
+          <div>
+            <div class="company">Data Scientist</div>
+            <div class="role">Fintech - 5 days ago</div>
+          </div>
+          <button class="btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">Edit</button>
+        </div>
+        <div class="app-item">
+          <div>
+            <div class="company">Product Manager</div>
+            <div class="role">E-commerce - 1 week ago</div>
+          </div>
+          <button class="btn-secondary" style="padding: 0.25rem 0.75rem; font-size: 0.75rem;">Edit</button>
+        </div>
+      </div>
+
+      <div class="info-box info" style="margin-top: 1.5rem;">
+        <strong style="color: #3b82f6;">Data Guarantee:</strong>
+        <span style="color: #9ca3af; font-size: 0.875rem;">KeyStone does not use your job descriptions or company data to train AI models.</span>
+        <a href="#" onclick="showPage('recruiter-terms'); return false;" style="color: #a78bfa; font-size: 0.875rem; margin-left: 0.5rem;">View Terms of Service</a>
+      </div>
+    </div>
+    <div class="page-nav">
+      <button onclick="showPage('landing')">Home</button>
+      <button onclick="showPage('recruiter-jd')">JD Generator</button>
+    </div>
+  </div>
+
+  <!-- ========== RECRUITER JD GENERATOR ========== -->
+  <div class="page-frame" id="page-recruiter-jd">
+    <div class="browser-chrome">
+      <div class="dot dot-red"></div><div class="dot dot-yellow"></div><div class="dot dot-green"></div>
+      <div class="url">keystone.sg/recruiter/jd</div>
+    </div>
+    <div class="page-content">
+      <h1 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1.5rem;">AI Job Description Generator</h1>
+
+      <div class="jd-container">
+        <div class="jd-form">
+          <div class="form-group">
+            <label>Job Title</label>
+            <input type="text" placeholder="e.g., Senior Software Engineer">
+          </div>
+          <div class="form-group">
+            <label>Company Name</label>
+            <input type="text" placeholder="e.g., DBS Bank">
+          </div>
+          <div class="form-group">
+            <label>Industry</label>
+            <select>
+              <option>Fintech</option>
+              <option>E-commerce</option>
+              <option>Technology</option>
+              <option>Banking</option>
+              <option>Government</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Company Type</label>
+            <select>
+              <option>MNC</option>
+              <option>Bank</option>
+              <option>Startup</option>
+              <option>Government</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Seniority Level</label>
+            <select>
+              <option>Junior (1-3 years)</option>
+              <option>Mid-level (3-5 years)</option>
+              <option>Senior (5+ years)</option>
+              <option>Lead / Manager</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Core Skills (up to 20)</label>
+            <div class="skills-input">
+              <span class="skill-tag">Python <span class="remove">x</span></span>
+              <span class="skill-tag">SQL <span class="remove">x</span></span>
+              <span class="skill-tag">AWS <span class="remove">x</span></span>
+              <span class="skill-tag">Docker <span class="remove">x</span></span>
+              <input type="text" placeholder="Type skill and press Enter...">
+            </div>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
+              <span style="font-size: 0.75rem; padding: 0.25rem 0.5rem; background: #2d2d44; border-radius: 0.25rem; cursor: pointer;">React</span>
+              <span style="font-size: 0.75rem; padding: 0.25rem 0.5rem; background: #2d2d44; border-radius: 0.25rem; cursor: pointer;">Kubernetes</span>
+              <span style="font-size: 0.75rem; padding: 0.25rem 0.5rem; background: #2d2d44; border-radius: 0.25rem; cursor: pointer;">PostgreSQL</span>
+              <span style="font-size: 0.75rem; padding: 0.25rem 0.5rem; background: #2d2d44; border-radius: 0.25rem; cursor: pointer;">Machine Learning</span>
+            </div>
+          </div>
+          <button class="btn-primary" style="width: 100%;">Generate Job Description</button>
+        </div>
+
+        <div class="jd-result">
+          <h3 style="font-size: 0.875rem; color: #6b7280; margin-bottom: 1rem;">Generated Result Preview</h3>
+          <div class="jd-preview">
+            <h3>Senior Software Engineer</h3>
+            <div class="company">DBS Bank - Singapore</div>
+
+            <div class="section">
+              <h4>Overview</h4>
+              <p>DBS is looking for a Senior Software Engineer to join our growing technology team in Singapore...</p>
+            </div>
+
+            <div class="section">
+              <h4>Responsibilities</h4>
+              <p>Design and implement scalable backend services using Python and AWS<br>
+              Collaborate with cross-functional teams to define product requirements<br>
+              Mentor junior engineers and drive best practices<br>
+              Contribute to our CI/CD pipeline and infrastructure...</p>
+            </div>
+
+            <div class="section">
+              <h4>Requirements</h4>
+              <p>5+ years of software development experience<br>
+              Strong proficiency in Python, SQL, and cloud platforms (AWS/GCP)<br>
+              Experience with containerization (Docker, Kubernetes)<br>
+              Excellent communication skills in English...</p>
+            </div>
+
+            <div class="section">
+              <h4>Nice to Have</h4>
+              <p>Experience in fintech or banking sector<br>
+              Knowledge of Singapore MAS regulations...</p>
+            </div>
+          </div>
+          <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+            <button class="btn-secondary" style="flex: 1;">Copy</button>
+            <button class="btn-primary" style="flex: 1;">Save</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="page-nav">
+      <button onclick="showPage('recruiter-dash')">Recruiter Dashboard</button>
+      <button onclick="showPage('pricing')">Pricing</button>
+    </div>
+  </div>
+
+  <!-- ========== LEGAL PAGES ========== -->
+  <div class="page-frame" id="page-legal">
+    <div class="browser-chrome">
+      <div class="dot dot-red"></div><div class="dot dot-yellow"></div><div class="dot dot-green"></div>
+      <div class="url">keystone.sg/terms</div>
+    </div>
+    <div class="legal-container">
+      <div class="legal-content">
+        <h1>Terms of Service</h1>
+
+        <h2>1. Service Description</h2>
+        <p>KeyStone is an AI-powered resume tailoring and job application tracking tool designed to help Singapore job seekers improve their application success rates.</p>
+
+        <h2>2. AI-Generated Content</h2>
+        <p>AI suggestions provided by KeyStone are for reference only and do not constitute professional career advice. Users are responsible for all content they ultimately submit.</p>
+
+        <h2>3. Subscription and Refunds</h2>
+        <ul>
+          <li>Pro Plan: SGD 12/month, billed monthly</li>
+          <li>7-day free trial with full refund if cancelled during trial period</li>
+          <li>Cancellation mid-cycle: no refund for current billing period, no future charges</li>
+        </ul>
+
+        <h2>4. Data and Privacy</h2>
+        <ul>
+          <li>All data stored on Singapore AWS (ap-southeast-1)</li>
+          <li>NRIC/FIN data is not collected or automatically anonymized before AI processing</li>
+          <li>Data is not used for AI model training without explicit consent</li>
+          <li>Compliant with Singapore PDPA 2012</li>
+        </ul>
+
+        <h2>5. Applicable Law</h2>
+        <p>These terms are governed by Singapore law. Disputes shall be submitted to Singapore arbitration.</p>
+
+        <div style="margin-top: 2rem; text-align: center;">
+          <a href="#" onclick="showPage('trust'); return false;" style="color: #a78bfa;">View Privacy Policy</a>
+          <span style="color: #6b7280; margin: 0 0.5rem;">-</span>
+          <a href="#" onclick="showPage('pricing'); return false;" style="color: #a78bfa;">Back to Pricing</a>
+        </div>
+      </div>
+    </div>
+    <div class="page-nav">
+      <button onclick="showPage('landing')">Home</button>
+      <button onclick="showPage('signup')">Sign Up</button>
+    </div>
+  </div>
+
+  <!-- User flow diagram -->
+  <div style="margin-top: 3rem; background: #1a1a2e; border: 1px solid #2d2d44; border-radius: 0.75rem; padding: 2rem;">
+    <h2 style="font-size: 1rem; font-weight: 600; margin-bottom: 1.5rem;">Complete User Journey</h2>
+    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: center;">
+      <span style="padding: 0.5rem 1rem; background: #2d2d44; border-radius: 0.5rem; font-size: 0.8rem;">Home</span>
+      <span style="color: #6b7280;">-</span>
+      <span style="padding: 0.5rem 1rem; background: #2d2d44; border-radius: 0.5rem; font-size: 0.8rem;">Free Analysis (Guest)</span>
+      <span style="color: #6b7280;">-</span>
+      <span style="padding: 0.5rem 1rem; background: #2d2d44; border-radius: 0.5rem; font-size: 0.8rem;">Sign Up</span>
+      <span style="color: #6b7280;">-</span>
+      <span style="padding: 0.5rem 1rem; background: #a78bfa; color: #1a1a2e; border-radius: 0.5rem; font-size: 0.8rem; font-weight: 600;">Dashboard</span>
+      <span style="color: #6b7280;">-</span>
+      <span style="padding: 0.5rem 1rem; background: #2d2d44; border-radius: 0.5rem; font-size: 0.8rem;">Application Tracking</span>
+      <span style="color: #6b7280;">-</span>
+      <span style="padding: 0.5rem 1rem; background: #2d2d44; border-radius: 0.5rem; font-size: 0.8rem;">Analytics</span>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: center; margin-top: 1rem;">
+      <span style="padding: 0.5rem 1rem; background: #2d2d44; border-radius: 0.5rem; font-size: 0.8rem;">Recruiter Home</span>
+      <span style="color: #6b7280;">-</span>
+      <span style="padding: 0.5rem 1rem; background: #2d2d44; border-radius: 0.5rem; font-size: 0.8rem;">JD Generator</span>
+      <span style="color: #6b7280;">-</span>
+      <span style="padding: 0.5rem 1rem; background: #2d2d44; border-radius: 0.5rem; font-size: 0.8rem;">Template Management</span>
+      <span style="color: #6b7280;">-</span>
+      <span style="padding: 0.5rem 1rem; background: #2d2d44; border-radius: 0.5rem; font-size: 0.8rem;">Team Management</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const pages = ['landing', 'pricing', 'analyse', 'signup', 'dashboard', 'applications', 'recruiter-dash', 'recruiter-jd', 'legal'];
+
+function showPage(name) {
+  // Hide all pages
+  pages.forEach(p => {
+    const el = document.getElementById('page-' + p);
+    if (el) el.classList.remove('active');
+  });
+
+  // Show target page
+  const target = document.getElementById('page-' + name);
+  if (target) target.classList.add('active');
+
+  // Update nav tabs
+  document.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.classList.remove('active');
+    if (tab.dataset.page === name) tab.classList.add('active');
+  });
+
+  // Scroll to top
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// Keyboard navigation
+document.addEventListener('keydown', (e) => {
+  const activePage = document.querySelector('.page-frame.active');
+  if (!activePage) return;
+  const currentIndex = pages.findIndex(p => document.getElementById('page-' + p) === activePage);
+
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+    const nextIndex = Math.min(currentIndex + 1, pages.length - 1);
+    showPage(pages[nextIndex]);
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    const prevIndex = Math.max(currentIndex - 1, 0);
+    showPage(pages[prevIndex]);
+  }
+});
+</script>
+
+</body>
+</html>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiRequest } from '@/lib/api';
 
 interface JDGenerateRequest {
@@ -21,22 +21,21 @@ interface JDGenerateResponse {
   generated_at: string;
 }
 
-const SKILLS_SUGGESTIONS = [
-  'Python',
-  'JavaScript',
-  'TypeScript',
-  'React',
-  'Node.js',
-  'AWS',
-  'Docker',
-  'PostgreSQL',
-  'Machine Learning',
-  'SQL',
-  'Project Management',
-  'Agile',
-  'Communication',
-  'Leadership',
-];
+interface SkillItem {
+  skill: string;
+  weighted_freq: number;
+  required_count: number;
+  preferred_count: number;
+  total_jds: number;
+}
+
+interface SkillsLookupResponse {
+  skills: SkillItem[];
+  total_jds_analyzed: number;
+  cold_start_warning?: string;
+  prompt_for_manual_input: boolean;
+  min_required_skills: number;
+}
 
 const SENIORITY_OPTIONS = [
   { value: 'junior', label: 'Junior (0-2 years)' },
@@ -81,6 +80,62 @@ export default function JDGeneratorPage() {
   const [result, setResult] = useState<JDGenerateResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [skillSuggestions, setSkillSuggestions] = useState<SkillItem[]>([]);
+  const [totalJdsAnalyzed, setTotalJdsAnalyzed] = useState<number | null>(null);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+
+  // Map frontend industry free-text to DB slug (matches backend industry_map)
+  const industrySlugMap: Record<string, string> = {
+    'Finance & Accounting': 'banking_finance',
+    'Technology & Software': 'technology',
+    'Healthcare & Medical': 'healthcare',
+    'Engineering & Manufacturing': 'engineering',
+    'Marketing & Communications': 'other',
+    'Sales & Business Development': 'other',
+    'Human Resources': 'other',
+    'Operations & Logistics': 'other',
+    'Legal & Compliance': 'other',
+    'Education & Training': 'education',
+    Consulting: 'consulting',
+    Other: 'other',
+  };
+
+  const fetchSkillSuggestions = useCallback(
+    async (title: string, industry: string, seniority: string) => {
+      if (!title || !industry) return;
+
+      const industrySlug = industrySlugMap[industry] || 'other';
+      setSkillsLoading(true);
+
+      try {
+        const params = new URLSearchParams({
+          title,
+          industry: industrySlug,
+          seniority,
+        });
+
+        const response = await apiRequest<SkillsLookupResponse>(
+          `/recruiter/skills/lookup?${params.toString()}`
+        );
+        setSkillSuggestions(response.skills);
+        setTotalJdsAnalyzed(response.total_jds_analyzed);
+      } catch (err) {
+        // Silently fail - user can still manually enter skills
+        console.error('Failed to fetch skill suggestions:', err);
+        setSkillSuggestions([]);
+        setTotalJdsAnalyzed(null);
+      } finally {
+        setSkillsLoading(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (form.title && form.industry) {
+      fetchSkillSuggestions(form.title, form.industry, form.seniority);
+    }
+  }, [form.title, form.industry, form.seniority, fetchSkillSuggestions]);
 
   const addSkill = (skill: string) => {
     const trimmed = skill.trim();
@@ -242,19 +297,32 @@ export default function JDGeneratorPage() {
               </button>
             </div>
             <div className="mt-2 flex flex-wrap gap-1">
-              {SKILLS_SUGGESTIONS.filter((s) => !form.skills.includes(s))
-                .slice(0, 8)
-                .map((skill) => (
-                  <button
-                    key={skill}
-                    type="button"
-                    onClick={() => addSkill(skill)}
-                    className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
-                  >
-                    + {skill}
-                  </button>
-                ))}
+              {skillsLoading ? (
+                <span className="text-xs text-gray-400 px-2 py-1">Loading suggestions...</span>
+              ) : skillSuggestions.length > 0 ? (
+                skillSuggestions
+                  .filter((s) => !form.skills.includes(s.skill))
+                  .slice(0, 8)
+                  .map((item) => (
+                    <button
+                      key={item.skill}
+                      type="button"
+                      onClick={() => addSkill(item.skill)}
+                      className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200"
+                      title={`Found in ${item.total_jds} JDs`}
+                    >
+                      + {item.skill}
+                    </button>
+                  ))
+              ) : (
+                <span className="text-xs text-gray-400 px-2 py-1">No suggestions available</span>
+              )}
             </div>
+            {totalJdsAnalyzed !== null && totalJdsAnalyzed > 0 && (
+              <p className="mt-1 text-xs text-gray-500">
+                Based on {totalJdsAnalyzed} job descriptions analyzed
+              </p>
+            )}
           </div>
 
           {error && (

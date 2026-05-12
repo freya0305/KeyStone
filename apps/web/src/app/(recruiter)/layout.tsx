@@ -1,16 +1,12 @@
-import { auth } from "@clerk/nextjs"
-import { redirect } from "next/navigation"
-import Link from "next/link"
+import { auth } from '@clerk/nextjs/server';
+import { redirect } from 'next/navigation';
+import Link from 'next/link';
 
-export default function RecruiterLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  const { userId } = auth()
+export default function RecruiterLayout({ children }: { children: React.ReactNode }) {
+  const { userId } = auth();
 
   if (!userId) {
-    redirect("/sign-in?redirect_url=/recruiter")
+    redirect('/sign-in?redirect_url=/recruiter');
   }
 
   return (
@@ -24,7 +20,9 @@ export default function RecruiterLayout({
                 <span className="text-white font-bold text-sm">KS</span>
               </div>
               <span className="font-semibold text-lg">KeyStone</span>
-              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">Recruiter</span>
+              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                Recruiter
+              </span>
             </Link>
             <nav className="hidden md:flex items-center gap-1">
               <Link
@@ -60,14 +58,18 @@ export default function RecruiterLayout({
             >
               Settings
             </Link>
+            <Link
+              href="/recruiter/terms"
+              className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md"
+            >
+              Terms
+            </Link>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        {children}
-      </main>
+      <main className="container mx-auto px-4 py-8">{children}</main>
     </div>
-  )
+  );
 }

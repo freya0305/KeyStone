@@ -3,6 +3,14 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { apiRequest } from '@/lib/api';
+import { InterviewPrepModal } from '@/components/keystone/InterviewPrepModal';
+
+interface CurrentStage {
+  stage_type: string;
+  round_number?: number;
+  outcome?: string;
+  is_multi_round: boolean;
+}
 
 interface Application {
   id: string;
@@ -12,6 +20,7 @@ interface Application {
   applied_at: string;
   job_url?: string;
   has_response?: boolean;
+  current_stage?: CurrentStage;
 }
 
 type BatchUpdateStatus = 'got_response' | 'no_news' | 'skip';
@@ -29,6 +38,11 @@ export default function ApplicationsPage() {
   const [batchMode, setBatchMode] = useState(false);
   const [batchUpdates, setBatchUpdates] = useState<Record<string, BatchUpdate>>({});
   const [pendingCount, setPendingCount] = useState(0);
+  const [interviewModal, setInterviewModal] = useState<{
+    isOpen: boolean;
+    application: Application | null;
+    mode: 'prep' | 'outcome';
+  }>({ isOpen: false, application: null, mode: 'prep' });
 
   useEffect(() => {
     apiRequest<Application[]>('/job-seeker/applications')
@@ -77,6 +91,26 @@ export default function ApplicationsPage() {
     offer: 'bg-green-100 text-green-700',
     rejected: 'bg-red-100 text-red-700',
     withdrawn: 'bg-gray-100 text-gray-700',
+  };
+
+  // Get current stage display label for multi-round support
+  const getStageLabel = (app: Application): string | null => {
+    const stage = app.current_stage;
+    if (!stage) return null;
+
+    if (stage.stage_type === 'interview' && stage.round_number && stage.round_number > 1) {
+      return `Interview Round ${stage.round_number}`;
+    }
+    if (stage.stage_type === 'interview') {
+      return 'Interview';
+    }
+    if (stage.stage_type === 'final') {
+      return 'Final Round';
+    }
+    if (stage.stage_type === 'response') {
+      return 'Response received';
+    }
+    return null;
   };
 
   return (
@@ -206,14 +240,29 @@ export default function ApplicationsPage() {
                     >
                       {app.status}
                     </span>
+                    {getStageLabel(app) && (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-50 text-purple-600 border border-purple-100">
+                        {getStageLabel(app)}
+                      </span>
+                    )}
                   </div>
                   <div className="text-sm text-gray-500 truncate mt-0.5">{app.role}</div>
                 </Link>
-                <div className="text-sm text-gray-400 ml-4">
+                <div className="text-sm text-gray-400 ml-4 flex items-center gap-2">
                   {new Date(app.applied_at).toLocaleDateString('en-SG', {
                     day: 'numeric',
                     month: 'short',
                   })}
+                  {!batchMode && (app.status === 'applied' || app.status === 'screening') && (
+                    <button
+                      onClick={() =>
+                        setInterviewModal({ isOpen: true, application: app, mode: 'prep' })
+                      }
+                      className="px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded-full hover:bg-purple-200 transition-colors"
+                    >
+                      Advance to Interview
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -256,6 +305,15 @@ export default function ApplicationsPage() {
           ))}
         </div>
       )}
+
+      {/* Interview Prep Modal */}
+      <InterviewPrepModal
+        isOpen={interviewModal.isOpen}
+        onClose={() => setInterviewModal({ isOpen: false, application: null, mode: 'prep' })}
+        application={interviewModal.application}
+        mode={interviewModal.mode}
+        onSuccess={() => window.location.reload()}
+      />
     </div>
   );
 }

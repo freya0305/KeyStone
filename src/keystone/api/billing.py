@@ -69,7 +69,7 @@ async def create_checkout_session(
 ):
     """Create Stripe Checkout session for Pro subscription.
 
-    Plans: 'monthly' (SGD 19/mo) or 'annual' (SGD 190/yr).
+    Plans: 'monthly' (SGD 12/mo). Annual plan is not available.
     """
     settings = get_settings()
     client = _get_stripe()
@@ -82,11 +82,9 @@ async def create_checkout_session(
 
     # Price IDs (use env-configured values)
     price_monthly = getattr(settings, "stripe_price_pro_monthly", "price_pro_monthly")
-    price_annual = getattr(settings, "stripe_price_pro_annual", "price_pro_annual")
 
-    price_id = price_monthly if plan == "monthly" else price_annual
-    if plan not in ("monthly", "annual"):
-        raise HTTPException(status_code=400, detail="Invalid plan. Use 'monthly' or 'annual'")
+    if plan != "monthly":
+        raise HTTPException(status_code=400, detail="Invalid plan. Use 'monthly' only — annual plan is cancelled")
 
     # Create or get Stripe customer
     if not db_user.stripe_customer_id:
@@ -103,7 +101,7 @@ async def create_checkout_session(
     session = client.checkout.sessions.create(
         customer=db_user.stripe_customer_id,
         mode="subscription",
-        line_items=[{"price": price_id, "quantity": 1}],
+        line_items=[{"price": price_monthly, "quantity": 1}],
         success_url=f"{base_url}/pro/welcome?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{base_url}/pricing",
         metadata={"user_id": str(db_user.id), "plan": plan},

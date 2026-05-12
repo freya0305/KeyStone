@@ -34,7 +34,7 @@ from keystone.models.entities import (
     UserConsent,
 )
 from keystone.services.claude_client import get_claude_client, ClaudeResponse
-from keystone.services.clerk_auth import AuthUser, get_current_user
+from keystone.services.clerk_auth import AuthUser, get_current_user, optional_current_user
 from keystone.services.consent import ConsentService
 from keystone.services.content_sanitizer import sanitize_resume_content, validate_before_storage
 from keystone.services.nric_detector import detect_nric, assert_no_nric, mask_nric
@@ -167,6 +167,32 @@ class ApplicationCreateRequest(BaseModel):
     notes: Optional[str] = None
     job_analysis_id: Optional[uuid.UUID] = None
     suggestion_set_id: Optional[uuid.UUID] = None
+    is_confirmed: bool = False
+
+
+class CurrentStage(BaseModel):
+    """Current stage info derived from latest stage event."""
+    stage_type: str  # response, screening, interview, final, offer, rejection, withdrawal
+    round_number: Optional[int] = None  # 1-5 for interviews, null for other stages
+    outcome: Optional[str] = None  # passed, failed, pending, withdrawn
+    stage_date: Optional[datetime] = None
+    is_multi_round: bool = False  # True when round_number > 1
+
+
+def _derive_current_stage(stage_events: list) -> Optional[CurrentStage]:
+    """Derive current stage from stage_events list (sorted by created_at desc)."""
+    if not stage_events:
+        return None
+    latest = stage_events[0] if stage_events else None
+    if not latest:
+        return None
+    return CurrentStage(
+        stage_type=latest.stage_type,
+        round_number=latest.round_number,
+        outcome=latest.outcome,
+        stage_date=latest.stage_date,
+        is_multi_round=(latest.round_number or 0) > 1,
+    )
 
 
 class ApplicationResponse(BaseModel):
@@ -179,12 +205,16 @@ class ApplicationResponse(BaseModel):
     job_url: Optional[str] = None
     applied_at: Optional[str] = None
     suggestion_set_id: Optional[uuid.UUID] = None
+    is_confirmed: bool = False
+    is_active: bool = False  # Quality gate: ≥2 stage events required for active status
+    current_stage: Optional[CurrentStage] = None  # Latest stage event for display
 
 
 class ApplicationUpdateRequest(BaseModel):
     status: Optional[str] = None
     final_outcome: Optional[str] = None
     notes: Optional[str] = None
+    is_confirmed: Optional[bool] = None
 
 
 # =============================================================================
@@ -202,6 +232,80 @@ class ApplicationStats(BaseModel):
 
 
 # =============================================================================
+# GAMIFICATION (P2: engagement flywheel)
+# =============================================================================
+
+
+class BadgeDefinition(BaseModel):
+    """Definition of an achievement badge."""
+    id: str  # unique badge identifier
+    name: str
+    description: str
+    icon: str  # emoji or icon name
+    earned: bool
+    earned_at: str | None = None  # ISO date string
+
+
+class GamificationStats(BaseModel):
+    """Gamification stats for engagement flywheel."""
+    current_streak: int
+    longest_streak: int
+    last_activity_date: str | None  # ISO date string
+    badges: list[BadgeDefinition]
+
+
+# Predefined badge definitions
+BADGE_DEFINITIONS = [
+    {"id": "first_app", "name": "First Steps", "description": "Submitted your first job application", "icon": "🎯"},
+    {"id": "streak_3", "name": "On a Roll", "description": "3-day activity streak", "icon": "🔥"},
+    {"id": "streak_7", "name": "Week Warrior", "description": "7-day activity streak", "icon": "💪"},
+    {"id": "streak_14", "name": "Fortnight Focus", "description": "14-day activity streak", "icon": "⭐"},
+    {"id": "apps_5", "name": "Getting Started", "description": "Tracked 5 job applications", "icon": "📋"},
+    {"id": "apps_10", "name": "Active Tracker", "description": "Tracked 10 job applications", "icon": "🏆"},
+    {"id": "apps_25", "name": "Dedicated Applicant", "description": "Tracked 25 job applications", "icon": "🌟"},
+    {"id": "first_outcome", "name": "Closed Loop", "description": "Logged your first application outcome", "icon": "✅"},
+    {"id": "response_received", "name": "Attention Grabber", "description": "Received first response from an employer", "icon": "📬"},
+    {"id": "interview_1", "name": "Interview Ready", "description": "Reached the interview stage", "icon": "🤝"},
+]
+
+
+def _compute_gamification_stats(
+    current_streak: int,
+    longest_streak: int,
+    last_activity_date,
+    earned_badges: list,
+    total_applications: int,
+    has_outcome: bool,
+    has_response: bool,
+    has_interview: bool,
+) -> GamificationStats:
+    """Compute gamification stats and badge statuses."""
+    # Build badge list with earned status
+    badges = []
+    for badge_def in BADGE_DEFINITIONS:
+        badge_id = badge_def["id"]
+        earned_at = None
+        if earned_badges and badge_id in earned_badges:
+            earned_at = earned_badges[badge_id] if isinstance(earned_badges, dict) else None
+
+        badges.append(BadgeDefinition(
+            id=badge_id,
+            name=badge_def["name"],
+            description=badge_def["description"],
+            icon=badge_def["icon"],
+            earned=earned_at is not None,
+            earned_at=earned_at,
+        ))
+
+    return GamificationStats(
+        current_streak=current_streak,
+        longest_streak=longest_streak,
+        last_activity_date=last_activity_date.isoformat() if last_activity_date else None,
+        badges=badges,
+    )
+
+
+# =============================================================================
 # RESUME UPLOAD
 # =============================================================================
 
@@ -210,7 +314,7 @@ class ApplicationStats(BaseModel):
 async def upload_resume(
     request: Request,
     file: UploadFile = File(...),
-    user: AuthUser = Depends(get_current_user),
+    user: Optional[AuthUser] = Depends(optional_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Upload and analyze resume (M2.1).
@@ -230,9 +334,13 @@ async def upload_resume(
     Returns:
         ResumeUploadResponse with resume_id, content_hash, sg_flags, nric_detected
     """
-    # Rate limit by user
-    tier_key = user.subscription_tier or "free"
-    check_rate_limit(str(user.job_seeker_id), tier_key)
+    # Rate limit by user (anonymous uses IP-based limiting)
+    if user is not None:
+        tier_key = user.subscription_tier or "free"
+        check_rate_limit(str(user.job_seeker_id), tier_key)
+    else:
+        client_ip = request.client.host if request.client else "unknown"
+        check_rate_limit(f"guest:{client_ip}", "guest")
 
     # Read file content
     content = await file.read()
@@ -250,13 +358,17 @@ async def upload_resume(
     content_hash = resume_text.content_hash
 
     # Check if resume with same hash already exists for this user (cache check)
-    existing = await db.execute(
-        select(Resume).where(
-            Resume.user_id == user.job_seeker_id,
-            Resume.content_hash == content_hash,
+    # Anonymous users skip cache check (no user_id to check against)
+    existing_resume = None
+    if user is not None:
+        existing = await db.execute(
+            select(Resume).where(
+                Resume.user_id == user.job_seeker_id,
+                Resume.content_hash == content_hash,
+            )
         )
-    )
-    existing_resume = existing.scalar_one_or_none()
+        existing_resume = existing.scalar_one_or_none()
+
     if existing_resume:
         logger.info("resume_cache_hit", resume_id=str(existing_resume.id), content_hash=content_hash[:16])
         return ResumeUploadResponse(
@@ -270,12 +382,12 @@ async def upload_resume(
     # Stage 1: Apply NRIC masking before S3 upload
     masked_text = mask_resume_text(resume_text.text)
 
-    # Upload to S3
+    # Upload to S3 (use "anonymous" for guest users)
     try:
         s3_key = await upload_resume_to_s3(
             content=content,
             content_hash=content_hash,
-            user_id=str(user.job_seeker_id),
+            user_id=str(user.job_seeker_id) if user else "anonymous",
             filename=file.filename,
         )
     except Exception as e:
@@ -285,10 +397,10 @@ async def upload_resume(
     # Extract SG-specific flags (M2.3)
     sg_flags_dict = _extract_sg_flags_to_dict(resume_text.text)
 
-    # Store resume record
+    # Store resume record (user_id None for anonymous)
     resume = Resume(
         id=uuid.uuid4(),
-        user_id=user.job_seeker_id,
+        user_id=user.job_seeker_id if user else None,
         content_hash=content_hash,
         parsed_json={
             "filename": file.filename,
@@ -867,27 +979,34 @@ def _extract_sg_flags_from_text(text: str) -> dict:
 async def parse_job(
     request: JobParseRequest,
     http_request: Request,
-    user: AuthUser = Depends(get_current_user),
+    user: Optional[AuthUser] = Depends(optional_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Parse job posting from URL or text.
 
+    Supports anonymous users (no signup required for first use).
+    Anonymous users get 1 free JD parse before signup prompt.
+
     Extracts: title, company, company_type, skills, seniority
-    Rate limited per user tier.
-
-    If consent_given=True, stores in raw_jds table for skill frequency ETL.
+    Rate limited per user tier (anonymous uses IP-based limiting).
     """
-    # Rate limit by user
-    tier_key = user.subscription_tier or "free"
-    check_rate_limit(str(user.job_seeker_id), tier_key)
+    # Rate limit by user (anonymous uses IP)
+    if user is not None:
+        tier_key = user.subscription_tier or "free"
+        check_rate_limit(str(user.job_seeker_id), tier_key)
+    else:
+        # Anonymous: rate limit by IP for abuse prevention
+        client_ip = http_request.client.host if http_request.client else "unknown"
+        check_rate_limit(f"guest:{client_ip}", "guest")
 
-    # Check AI processing consent before Claude API call
-    consent_service = ConsentService(db)
-    if not await consent_service.check_ai_processing(user.job_seeker_id):
-        raise HTTPException(
-            status_code=403,
-            detail="AI processing consent required. Please grant AI processing consent to use this feature."
-        )
+    # Check AI processing consent (skip for anonymous users)
+    if user is not None:
+        consent_service = ConsentService(db)
+        if not await consent_service.check_ai_processing(user.job_seeker_id):
+            raise HTTPException(
+                status_code=403,
+                detail="AI processing consent required. Please grant AI processing consent to use this feature."
+            )
 
     if not request.url and not request.text:
         raise HTTPException(
@@ -918,9 +1037,16 @@ async def parse_job(
             }
         except ValueError as e:
             logger.warning("job_url_fetch_failed", url=request.url, error=str(e))
-            raise HTTPException(status_code=400, detail=str(e))
-        parsed = await _parse_job_with_ai(client, settings, text=raw_jd_text)
-        parsed["parsed_from"] = "url"
+            # Spec: silently fall back to text-paste if text is available
+            if request.text:
+                raw_jd_text = request.text
+                parsed = await _parse_job_with_ai(client, settings, text=raw_jd_text)
+                parsed["parsed_from"] = "text"
+            else:
+                raise HTTPException(status_code=400, detail=str(e))
+        else:
+            parsed = await _parse_job_with_ai(client, settings, text=raw_jd_text)
+            parsed["parsed_from"] = "url"
     else:
         raw_jd_text = request.text
         parsed = await _parse_job_with_ai(client, settings, text=request.text)
@@ -931,10 +1057,10 @@ async def parse_job(
     if jd_is_spam:
         logger.info("job_parse.spam_detected", source=source_url or "text")
 
-    # Store job analysis
+    # Store job analysis (user_id None for anonymous)
     analysis = JobAnalysis(
         id=uuid.uuid4(),
-        user_id=user.job_seeker_id,
+        user_id=user.job_seeker_id if user else None,
         job_url=source_url or None,
         job_parsed_json=parsed,
         company_type=parsed.get("company_type"),
@@ -943,7 +1069,8 @@ async def parse_job(
     db.add(analysis)
 
     # Store in raw_jds if user consents per architecture spec §7
-    if request.consent_given and not jd_is_spam:
+    # Anonymous users cannot consent, skip raw_jds storage
+    if user is not None and request.consent_given and not jd_is_spam:
         from keystone.models.entities import RawJD
 
         # Classify company type if not already set
@@ -1065,6 +1192,7 @@ Job posting:
             system_prompt="You are a job posting analyst. Return ONLY valid JSON, no markdown or explanation.",
             user_prompt=prompt,
             max_tokens=1024,
+            timeout=10.0,  # Resume/analysis ≤10s per spec
         )
         # Parse JSON from response
         content = response.content.strip()
@@ -1530,6 +1658,7 @@ Job requirements:
             system_prompt="You are a job match analyst. Respond with JSON.",
             user_prompt=prompt,
             max_tokens=2048,
+            timeout=10.0,  # Resume/analysis ≤10s per spec
         )
     except CircuitBreakerError:
         raise HTTPException(status_code=503, detail="AI service temporarily unavailable")
@@ -1572,10 +1701,13 @@ def _calculate_match_score(match_results: dict) -> float:
 async def generate_job_analysis_suggestions(
     job_id: uuid.UUID,
     resume_id: uuid.UUID,
-    user: AuthUser = Depends(get_current_user),
+    user: Optional[AuthUser] = Depends(optional_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Generate line-by-line revision suggestions for a job analysis.
+
+    Supports anonymous users (no signup required for first use).
+    Anonymous users get unlimited suggestions on their first JD.
 
     M4.1: Uses Claude Sonnet for high-quality suggestions with SG context.
     M4.3: Free tier gating - first JD unlimited, subsequent JDs first 3 + gated.
@@ -1593,21 +1725,22 @@ async def generate_job_analysis_suggestions(
     settings = get_settings()
     cost_tracker = get_llm_cost_tracker()
 
-    # Check AI processing consent before Claude API call
-    consent_service = ConsentService(db)
-    if not await consent_service.check_ai_processing(user.job_seeker_id):
-        raise HTTPException(
-            status_code=403,
-            detail="AI processing consent required. Please grant AI processing consent to use this feature."
-        )
+    # Check AI processing consent (skip for anonymous users)
+    if user is not None:
+        consent_service = ConsentService(db)
+        if not await consent_service.check_ai_processing(user.job_seeker_id):
+            raise HTTPException(
+                status_code=403,
+                detail="AI processing consent required. Please grant AI processing consent to use this feature."
+            )
 
     client = get_claude_client()
 
-    # Get job analysis
+    # Get job analysis (user_id=None for anonymous)
     job_result = await db.execute(
         select(JobAnalysis).where(
             JobAnalysis.id == job_id,
-            JobAnalysis.user_id == user.job_seeker_id,
+            JobAnalysis.user_id == user.job_seeker_id if user else None,
         )
     )
     job = job_result.scalar_one_or_none()
@@ -1618,7 +1751,7 @@ async def generate_job_analysis_suggestions(
     resume_result = await db.execute(
         select(Resume).where(
             Resume.id == resume_id,
-            Resume.user_id == user.job_seeker_id,
+            Resume.user_id == user.job_seeker_id if user else None,
         )
     )
     resume = resume_result.scalar_one_or_none()
@@ -1829,6 +1962,7 @@ async def _generate_and_store_suggestions(
             system_prompt=_SUGGESTION_SYSTEM_PROMPT,
             user_prompt=prompt,
             max_tokens=4096,
+            timeout=15.0,  # Suggestions ≤15s per spec
         )
 
         # Track cost (M4.4)
@@ -1955,6 +2089,7 @@ Format each suggestion as JSON."""
             system_prompt="You are an expert resume writer. Generate specific, actionable suggestions.",
             user_prompt=prompt,
             max_tokens=4096,
+            timeout=15.0,  # Suggestions ≤15s per spec
         )
     except CircuitBreakerError:
         raise HTTPException(status_code=503, detail="AI service temporarily unavailable")
@@ -2009,10 +2144,13 @@ def _parse_suggestions(content: str, job_analysis_id: uuid.UUID) -> list[Suggest
 async def submit_suggestion_feedback(
     suggestion_id: uuid.UUID,
     request: SuggestionFeedbackRequest,
-    user: AuthUser = Depends(get_current_user),
+    user: Optional[AuthUser] = Depends(optional_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Submit feedback on a suggestion (accept/reject/modify)."""
+    """Submit feedback on a suggestion (accept/reject/modify).
+
+    Supports anonymous users - feedback is not logged for guests.
+    """
     result = await db.execute(
         select(Suggestion).where(Suggestion.id == suggestion_id)
     )
@@ -2020,17 +2158,19 @@ async def submit_suggestion_feedback(
     if not suggestion:
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
-    # Log the signal for learning
-    from keystone.models.entities import SuggestionSignal
+    # Log the signal for learning (skip for anonymous users)
+    if user is not None:
+        from keystone.models.entities import SuggestionSignal
 
-    signal = SuggestionSignal(
-        id=uuid.uuid4(),
-        anonymized_user_id=_hash_user_id(user.id),
-        suggestion_id=suggestion_id,
-        action=request.action.upper(),
-        modified_text=request.modified_text,
-        created_at=datetime.utcnow(),
-    )
+        signal = SuggestionSignal(
+            id=uuid.uuid4(),
+            anonymized_user_id=_hash_user_id(user.id),
+            suggestion_id=suggestion_id,
+            action=request.action.upper(),
+            modified_text=request.modified_text,
+            created_at=datetime.utcnow(),
+        )
+        db.add(signal)
     db.add(signal)
 
     # If modified, update the suggestion
@@ -2046,6 +2186,155 @@ def _hash_user_id(user_id: str) -> str:
     """Anonymize user ID for suggestion signals (PDPA compliance)."""
     import hashlib
     return hashlib.sha256(user_id.encode()).hexdigest()[:16]
+
+
+# =============================================================================
+# SUGGESTION-OUTCOME CORRELATION (Data Flywheel — VP2)
+# =============================================================================
+
+
+class MatchLevelStats(BaseModel):
+    """Aggregate stats for one match_level bucket."""
+
+    match_level: str  # strong | transferable | addressable | fundamental
+    signal_count: int = 0  # total SuggestionSignal records
+    application_count: int = 0  # unique applications using this match_level
+    responded_count: int = 0  # applications that received a response
+    response_rate: float = 0.0  # responded_count / application_count (0 if none)
+
+
+class SuggestionOutcomeCorrelation(BaseModel):
+    """Correlate suggestion match_level patterns with application outcomes.
+
+    Enables ranking suggestions by "which match levels correlate with higher
+    response rates" — the data flywheel foundation for VP2.
+    """
+
+    total_signals: int = 0
+    total_applications: int = 0
+    overall_response_rate: float = 0.0
+    by_match_level: list[MatchLevelStats] = []  # ranked by response_rate desc
+
+
+async def get_suggestion_outcome_correlation(
+    db: AsyncSession,
+    limit_match_level: Optional[str] = None,
+) -> SuggestionOutcomeCorrelation:
+    """Aggregate suggestion signals grouped by match_level, joined to application outcomes.
+
+    JOIN path: SuggestionSignal → Suggestion → JobAnalysis → Application
+    An application is counted as "responded" when its status is past APPLIED
+    (i.e., SCREENING | INTERVIEW | OFFER | REJECTED) or has a final_outcome set.
+    """
+    from sqlalchemy import func, case
+    from keystone.models.entities import SuggestionSignal, Suggestion, JobAnalysis, Application
+
+    # Sub-query: applications that used suggestions (suggestion_set_id is set)
+    app_subq = (
+        select(Application.id)
+        .where(Application.suggestion_set_id.isnot(None))
+        .subquery()
+    )
+
+    # Join SuggestionSignal → Suggestion → JobAnalysis → Application
+    # Only applications that have a suggestion_set_id
+    query = (
+        select(
+            Suggestion.match_level,
+            func.count(SuggestionSignal.id).label("signal_count"),
+            func.count(func.distinct(Application.id)).label("application_count"),
+            func.sum(
+                case(
+                    (
+                        (Application.status.in_([
+                            ApplicationStatus.SCREENING,
+                            ApplicationStatus.INTERVIEW,
+                            ApplicationStatus.OFFER,
+                            ApplicationStatus.REJECTED,
+                        ])) | Application.final_outcome.isnot(None),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("responded_count"),
+        )
+        .join(Suggestion, SuggestionSignal.suggestion_id == Suggestion.id)
+        .join(JobAnalysis, Suggestion.job_analysis_id == JobAnalysis.id)
+        .join(Application, Application.suggestion_set_id == JobAnalysis.id)
+        .where(Application.suggestion_set_id.isnot(None))
+        .group_by(Suggestion.match_level)
+    )
+
+    if limit_match_level:
+        query = query.where(Suggestion.match_level == limit_match_level)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    stats_by_level = {}
+    total_signals = 0
+    total_apps = 0
+    total_responded = 0
+
+    for row in rows:
+        ml = row.match_level or "unknown"
+        signal_count = row.signal_count or 0
+        app_count = row.application_count or 0
+        responded = row.responded_count or 0
+        resp_rate = (responded / app_count) if app_count > 0 else 0.0
+
+        stats_by_level[ml] = MatchLevelStats(
+            match_level=ml,
+            signal_count=signal_count,
+            application_count=app_count,
+            responded_count=responded,
+            response_rate=round(resp_rate, 4),
+        )
+        total_signals += signal_count
+        total_apps += app_count
+        total_responded += responded
+
+    overall_rate = (total_responded / total_apps) if total_apps > 0 else 0.0
+
+    # Rank by response_rate descending
+    ranked = sorted(
+        stats_by_level.values(),
+        key=lambda s: s.response_rate,
+        reverse=True,
+    )
+
+    return SuggestionOutcomeCorrelation(
+        total_signals=total_signals,
+        total_applications=total_apps,
+        overall_response_rate=round(overall_rate, 4),
+        by_match_level=ranked,
+    )
+
+
+@router.get(
+    "/suggestions/outcomes/correlate",
+    response_model=SuggestionOutcomeCorrelation,
+    tags=["suggestions"],
+)
+async def suggest_outcome_correlate(
+    match_level: Optional[str] = None,
+    user: Optional[AuthUser] = Depends(optional_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Correlate suggestion match_level patterns with application response outcomes.
+
+    JOIN path: SuggestionSignal → Suggestion → JobAnalysis → Application
+
+    Returns per-match_level aggregates (signal_count, application_count,
+    response_rate) ranked by response_rate descending.
+
+    An application is "responded" when status is past APPLIED
+    (SCREENING | INTERVIEW | OFFER | REJECTED) OR final_outcome is set.
+
+    Query params:
+      match_level: filter to one bucket (strong | transferable | addressable | fundamental)
+    """
+    return await get_suggestion_outcome_correlation(db, limit_match_level=match_level)
 
 
 # =============================================================================
@@ -2078,10 +2367,15 @@ async def create_application(
         job_url=request.job_url,
         applied_date=applied_date,
         status=ApplicationStatus.APPLIED if request.status == "applied" else ApplicationStatus.INTERESTED,
+        is_confirmed=request.is_confirmed,
         stages=[],
         notes=request.notes,
     )
     db.add(application)
+
+    # Update gamification streak
+    await _update_gamification_on_activity(db, user.job_seeker_id)
+
     await db.commit()
     await db.refresh(application)
 
@@ -2091,6 +2385,7 @@ async def create_application(
         user_id=str(user.job_seeker_id),
         employer=request.employer,
         role=request.role,
+        is_confirmed=request.is_confirmed,
     )
 
     return ApplicationResponse(
@@ -2103,6 +2398,9 @@ async def create_application(
         job_url=application.job_url,
         applied_at=application.applied_date.isoformat() if application.applied_date else None,
         suggestion_set_id=application.suggestion_set_id,
+        is_confirmed=application.is_confirmed,
+        is_active=len(application.stages or []) >= 2,  # Quality gate: ≥2 stage events
+        current_stage=None,  # New applications have no stage events yet
     )
 
 
@@ -2149,6 +2447,11 @@ async def list_applications(
             job_url=a.job_url,
             applied_at=a.applied_date.isoformat() if a.applied_date else None,
             suggestion_set_id=a.suggestion_set_id,
+            is_confirmed=a.is_confirmed,
+            is_active=len(a.stages or []) >= 2,  # Quality gate: ≥2 stage events
+            current_stage=_derive_current_stage(
+                sorted(a.stage_events, key=lambda s: s.created_at, reverse=True) if a.stage_events else []
+            ),
         )
         for a in applications
     ]
@@ -2181,6 +2484,11 @@ async def get_application(
         job_url=application.job_url,
         applied_at=application.applied_date.isoformat() if application.applied_date else None,
         suggestion_set_id=application.suggestion_set_id,
+        is_confirmed=application.is_confirmed,
+        is_active=len(application.stages or []) >= 2,  # Quality gate: ≥2 stage events
+        current_stage=_derive_current_stage(
+            sorted(application.stage_events, key=lambda s: s.created_at, reverse=True) if application.stage_events else []
+        ),
     )
 
 
@@ -2191,7 +2499,13 @@ async def update_application(
     user: AuthUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update application status/outcome/notes."""
+    """Update application status/outcome/notes.
+
+    When status changes, creates a stage event for analytics tracking.
+    This ensures the quality gate (≥2 stage events for active status) is enforced.
+    """
+    from keystone.models.entities import ApplicationStage
+
     result = await db.execute(
         select(Application).where(
             Application.id == application_id,
@@ -2202,15 +2516,40 @@ async def update_application(
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
 
+    old_status = application.status
     if request.status:
         application.status = ApplicationStatus(request.status)
+        # Create stage event for status change (quality gate: ≥2 events = active)
+        stage_event = ApplicationStage(
+            application_id=application_id,
+            stage_type=request.status,
+            notes=f"Status changed from {old_status.value if hasattr(old_status, 'value') else old_status} to {request.status}",
+        )
+        db.add(stage_event)
+
+        # Sync to application's stages JSON
+        current_stages = application.stages or []
+        current_stages.append({
+            "id": str(stage_event.id),
+            "stage_type": request.status,
+            "stage_date": datetime.utcnow().isoformat(),
+            "notes": f"Status changed from {old_status.value if hasattr(old_status, 'value') else old_status}",
+        })
+        application.stages = current_stages
+
     if request.final_outcome:
         application.final_outcome = request.final_outcome
     if request.notes is not None:
         application.notes = request.notes
+    if request.is_confirmed is not None:
+        application.is_confirmed = request.is_confirmed
 
     application.last_activity_at = datetime.utcnow()
     application.updated_at = datetime.utcnow()
+
+    # Update gamification streak on activity
+    await _update_gamification_on_activity(db, user.job_seeker_id)
+
     await db.commit()
     await db.refresh(application)
 
@@ -2219,6 +2558,7 @@ async def update_application(
         application_id=str(application_id),
         user_id=str(user.job_seeker_id),
         status=request.status,
+        is_active=len(application.stages or []) >= 2,
     )
 
     return ApplicationResponse(
@@ -2230,6 +2570,12 @@ async def update_application(
         created_at=application.created_at,
         job_url=application.job_url,
         applied_at=application.applied_date.isoformat() if application.applied_date else None,
+        suggestion_set_id=application.suggestion_set_id,
+        is_confirmed=application.is_confirmed,
+        is_active=len(application.stages or []) >= 2,  # Quality gate: ≥2 stage events
+        current_stage=_derive_current_stage(
+            sorted(application.stage_events, key=lambda s: s.created_at, reverse=True) if application.stage_events else []
+        ),
     )
 
 
@@ -2348,6 +2694,9 @@ async def advance_stage(
     application.stages = current_stages
     application.last_activity_at = datetime.utcnow()
 
+    # Update gamification streak on activity
+    await _update_gamification_on_activity(db, user.job_seeker_id)
+
     await db.commit()
     await db.refresh(stage_event)
 
@@ -2437,6 +2786,9 @@ async def edit_stage(
             break
     application.stages = current_stages
     application.last_activity_at = datetime.utcnow()
+
+    # Update gamification streak on activity
+    await _update_gamification_on_activity(db, user.job_seeker_id)
 
     await db.commit()
     await db.refresh(stage_event)
@@ -2747,6 +3099,47 @@ async def mark_all_no_news(
     await db.commit()
 
     return {"marked": count}
+
+
+@router.get("/applications/pending-count")
+async def get_pending_count(
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    http_request: Request = None,
+    days_pending: int = 7,
+):
+    """Get count of applications that need update (no activity in specified days).
+
+    Returns applications in active states (applied, screening, interview)
+    that have had no activity for the specified number of days.
+    These are the applications shown in the batch update banner.
+    """
+    if http_request:
+        check_rate_limit(get_client_identifier(http_request), "default")
+
+    if not user.job_seeker_id:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    cutoff = datetime.utcnow() - timedelta(days=days_pending)
+
+    result = await db.execute(
+        select(Application).where(
+            Application.user_id == user.job_seeker_id,
+            Application.status.in_([ApplicationStatus.APPLIED, ApplicationStatus.SCREENING, ApplicationStatus.INTERVIEW]),
+            Application.last_activity_at < cutoff,
+            Application.auto_closed_at.is_(None),
+        )
+    )
+    apps = result.scalars().all()
+
+    logger.info(
+        "applications.pending_count",
+        user_id=str(user.job_seeker_id),
+        count=len(apps),
+        days_pending=days_pending,
+    )
+
+    return {"count": len(apps)}
 
 
 # =============================================================================
@@ -3074,6 +3467,66 @@ async def get_analytics_summary(
         nudge_eligible_count=nudge_count,
         active_last_30d=active_30d,
         completed_last_30d=completed_30d,
+    )
+
+
+@router.get("/analytics/gamification", response_model=GamificationStats)
+async def get_gamification_stats(
+    user: AuthUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    http_request: Request = None,
+):
+    """Get gamification stats for engagement flywheel (P2).
+
+    Returns current streak, longest streak, and all badge statuses.
+    Badges are computed from user activity patterns.
+    """
+    if http_request:
+        check_rate_limit(get_client_identifier(http_request), "default")
+
+    if not user.job_seeker_id:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    # Fetch user record for gamification fields
+    user_result = await db.execute(select(User).where(User.id == user.job_seeker_id))
+    user_record = user_result.scalar_one_or_none()
+
+    if not user_record:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Get application counts and outcomes
+    all_result = await db.execute(
+        select(Application).where(Application.user_id == user.job_seeker_id)
+    )
+    all_apps = all_result.scalars().all()
+    total_apps = len(all_apps)
+
+    # Check for specific achievements
+    has_outcome = any(a.final_outcome for a in all_apps)
+    has_response = any(
+        a.stages and any(s.get("stage_type") == "response" for s in a.stages if isinstance(s, dict))
+        for a in all_apps
+    )
+    has_interview = any(
+        a.stages and any(s.get("stage_type") == "interview" for s in a.stages if isinstance(s, dict))
+        for a in all_apps
+    )
+
+    # Build earned badges dict (badge_id -> earned_at ISO string)
+    earned_badges = user_record.earned_badges or {}
+    if isinstance(earned_badges, list):
+        # Legacy list format - convert to dict
+        earned_badges = {b: datetime.utcnow().isoformat() for b in earned_badges}
+
+    return _compute_gamification_stats(
+        current_streak=user_record.current_streak or 0,
+        longest_streak=user_record.longest_streak or 0,
+        last_activity_date=user_record.last_activity_date,
+        earned_badges=earned_badges,
+        total_applications=total_apps,
+        has_outcome=has_outcome,
+        has_response=has_response,
+        has_interview=has_interview,
     )
 
 
@@ -3633,12 +4086,34 @@ async def export_resume(
 
     filename = f"resume_{job_title}.{ext}".replace(" ", "_")
 
+    # Auto-create application record after resume export (Feature 4: Application Outcome Tracking)
+    # Created in "Applied" stage but flagged as unconfirmed — user will be asked
+    # "Did you submit to [Company]?" to confirm or dismiss.
+    employer_name = company or job_title
+    auto_application = Application(
+        id=uuid.uuid4(),
+        user_id=user.job_seeker_id,
+        job_analysis_id=job_analysis_uuid,
+        suggestion_set_id=job_analysis_uuid,
+        employer=employer_name,
+        role=job_title,
+        job_url=analysis.job_url,
+        applied_date=None,  # Not yet submitted — user must confirm
+        status=ApplicationStatus.APPLIED,
+        is_confirmed=False,  # Awaiting user confirmation via "Did you submit?"
+        stages=[],
+    )
+    db.add(auto_application)
+    await db.commit()
+    await db.refresh(auto_application)
+
     logger.info(
         "resume_exported",
         job_analysis_id=str(job_analysis_uuid),
         user_id=str(user.job_seeker_id),
         format=request.format,
         suggestions_count=len(accepted_suggestions),
+        auto_application_id=str(auto_application.id),
     )
 
     return Response(
@@ -3646,6 +4121,109 @@ async def export_resume(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# =============================================================================
+# GAMIFICATION HELPERS
+# =============================================================================
+
+
+async def _update_gamification_on_activity(db: AsyncSession, user_id: uuid.UUID) -> None:
+    """Update gamification streak and badges when user has application activity.
+
+    Called after creating/updating applications to track engagement.
+    """
+    from datetime import date
+
+    # Get user record
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        return
+
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+
+    # Initialize earned_badges if needed
+    earned_badges = user.earned_badges or {}
+    if isinstance(earned_badges, list):
+        earned_badges = {b: datetime.utcnow().isoformat() for b in earned_badges}
+
+    # Check if this is a new activity day (not same day as last activity)
+    needs_streak_update = False
+    if user.last_activity_date is None:
+        # First activity ever
+        user.current_streak = 1
+        user.longest_streak = max(user.longest_streak or 0, 1)
+        needs_streak_update = True
+    elif user.last_activity_date == today:
+        # Same day - no streak change
+        pass
+    elif user.last_activity_date == yesterday:
+        # Consecutive day - increment streak
+        user.current_streak = (user.current_streak or 0) + 1
+        user.longest_streak = max(user.longest_streak or 0, user.current_streak)
+        needs_streak_update = True
+    else:
+        # Streak broken - reset
+        user.current_streak = 1
+        needs_streak_update = True
+
+    if needs_streak_update:
+        user.last_activity_date = today
+
+    # Get application counts for badge checks
+    apps_result = await db.execute(select(Application).where(Application.user_id == user_id))
+    apps = apps_result.scalars().all()
+    total_apps = len(apps)
+
+    # Check milestone badges
+    now_iso = datetime.utcnow().isoformat()
+
+    # First application badge
+    if total_apps == 1 and "first_app" not in earned_badges:
+        earned_badges["first_app"] = now_iso
+
+    # Application count badges
+    if total_apps >= 5 and "apps_5" not in earned_badges:
+        earned_badges["apps_5"] = now_iso
+    if total_apps >= 10 and "apps_10" not in earned_badges:
+        earned_badges["apps_10"] = now_iso
+    if total_apps >= 25 and "apps_25" not in earned_badges:
+        earned_badges["apps_25"] = now_iso
+
+    # Streak badges
+    current_streak = user.current_streak or 0
+    if current_streak >= 3 and "streak_3" not in earned_badges:
+        earned_badges["streak_3"] = now_iso
+    if current_streak >= 7 and "streak_7" not in earned_badges:
+        earned_badges["streak_7"] = now_iso
+    if current_streak >= 14 and "streak_14" not in earned_badges:
+        earned_badges["streak_14"] = now_iso
+
+    # First outcome badge
+    has_outcome = any(a.final_outcome for a in apps)
+    if has_outcome and "first_outcome" not in earned_badges:
+        earned_badges["first_outcome"] = now_iso
+
+    # Response received badge
+    has_response = any(
+        a.stages and any(s.get("stage_type") == "response" for s in a.stages if isinstance(s, dict))
+        for a in apps
+    )
+    if has_response and "response_received" not in earned_badges:
+        earned_badges["response_received"] = now_iso
+
+    # Interview badge
+    has_interview = any(
+        a.stages and any(s.get("stage_type") == "interview" for s in a.stages if isinstance(s, dict))
+        for a in apps
+    )
+    if has_interview and "interview_1" not in earned_badges:
+        earned_badges["interview_1"] = now_iso
+
+    user.earned_badges = earned_badges
+    await db.commit()
 
 
 # =============================================================================

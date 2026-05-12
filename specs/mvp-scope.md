@@ -1,28 +1,34 @@
 # MVP Scope — KeyStone v1.0
 
 > Authority: this file defines what ships in v1.0 and what does not. Phase 03 (/implement) MUST NOT implement anything in the "excluded" section.
-> Last updated: 2026-04-29
+> Last updated: 2026-05-07
 
 ---
 
 ## What Is MVP v1.0
 
-The minimum product that lets a SG job seeker experience measurable value — enough to justify SGD 12/month — AND begins accumulating the proprietary signal data that becomes the long-term defensibility moat.
+The minimum product that serves two simultaneous user groups:
 
-**Decision criterion for any feature**: "If we don't ship this, will a SG job seeker pay SGD 12/month?" Yes → in. Maybe → Phase 2. Unlikely → cut.
+- **Job seekers**: Per-job resume tailoring with outcome tracking — enough value to justify SGD 12/month
+- **Recruiters/employers**: AI JD generator — enough value to justify SGD 79–449/month
+
+The two-sided data flywheel begins accumulating from Day 1 for skill frequency data (JDs written → skill patterns), but the bidirectional improvement loop (outcome-correlated skill patterns) activates Month 3+ once B2C application outcome data is flowing.
+
+**Decision criterion for any B2C feature**: "If we don't ship this, will a SG job seeker pay SGD 12/month?" Yes → in. Maybe → Phase 2. Unlikely → cut.
+**Decision criterion for any B2B feature**: "If we don't ship this, will a recruiter/employer pay SGD 79/month?" Yes → in.
 
 ---
 
 ## In Scope — v1.0
 
-### Feature 1: Resume Upload + SG Analysis
+### Feature 1: Resume Upload + Analysis
 
 - PDF, DOCX, plain text upload (max 5MB)
 - Processing time: ≤10 seconds
-- SG flags: NRIC detection (removal recommendation), NS section quality assessment (male graduates), professional photo include/exclude guidance (by company type), education format SG conventions
-- PMET intelligence: career pivot narrative reframing, age-neutral language detection, seniority repositioning, contract/freelance framing
 - Overall strengths (2–4 bullets) + gaps (2–4 bullets)
 - Content hash caching (re-running same resume against different JDs does not re-trigger analysis)
+
+> **Note**: PMET intelligence (career pivot reframing, age-neutral language, seniority repositioning, contract/freelance framing) and SG-specific flags (NRIC, NS, photo, education format) are Phase 2 — requires SG PMET resume training data that is not available at launch. v1.0 ships with general resume analysis; PMET-specific features are the primary Phase 2 conversion driver for the highest-WTP segment.
 
 ### Feature 2: JD Input + Four-Level Match Assessment
 
@@ -54,10 +60,21 @@ The minimum product that lets a SG job seeker experience measurable value — en
   - Batch quick-update UI: persistent banner when returning to product; card-per-application with [Got response] / [No news] / [Skip]; designed for 30 applications in <3 minutes
   - Pre-prep interstitial: prompt to batch-update pending applications before entering interview prep
   - Gamification: tracking completeness % visible to user with percentile ranking
-  - Single weekly digest email (max 1/week/user, only if no login that week, deep link to batch update)
   - Auto-close: 30-day silent close with correction toast at next login
-  - SPF/DKIM/DMARC on sending domain before launch (for the weekly digest)
+- **Application tracking quality gate**: Only applications with ≥2 status updates are recorded as "active applications." Applications with only auto-created records (no user confirmation) are excluded from aggregate analytics and JD training data. This prevents false-positive application records from polluting outcome data.
+- **JD training data from unconfirmed applications**: Even if an application record is not confirmed by the user, the job URL from that application is still logged to `jd_generation_logs` (anonymized, no user association) for skill frequency training data. User consent for this logging is collected at account creation.
 - PDPA training separation: B2B university data → dashboards only, never training pipeline
+
+### Feature 5: JD Generator for Recruiters / Employers (B2B Side — Phase 1 MVP)
+
+- Input: job title, industry, company type, key requirements (free-text or structured)
+- Output: AI-generated JD with skills, responsibilities, qualifications, tone calibrated for company type (GLC / MNC / SME / Startup)
+- Based on: analysis of public job postings (MyCareersFuture, JobStreet, LinkedIn) — extracting skill frequency, required vs preferred patterns, industry-standard competency frameworks. NOT candidate profile data.
+- Month 1–3 (MVP): JD tool helps recruiters write accurate JDs based on public JD analysis. Candidate quality data is not yet flowing back.
+- Month 3+ (feedback loop): As B2C users log application outcomes (Applied → Interview → Offer), anonymized aggregate signal flows back: "JDs with skill pattern X attracted candidates who reached interview stage." This is NOT individual candidate profiles — it is aggregate outcome-correlated skill patterns, collected under PDPA-compliant consent. Recruiters see improved JD suggestions based on which skill combinations correlate with higher response rates across the platform.
+- Pricing: Agency Team SGD 79/month (5 users, 100 JD) / Agency Pro SGD 199/month (10 users, 400 JD) / Agency Enterprise SGD 449/month (unlimited users, unlimited JD)
+- Free tier: 10 JD generations/month for registered recruiters — lowers barrier to first use
+- PDPA: no personal resume data stored; only aggregate market-skill pattern signal used
 
 ### Architecture Requirements (Day 1, non-negotiable)
 
@@ -67,32 +84,15 @@ The minimum product that lets a SG job seeker experience measurable value — en
 
 ### Payments and Auth
 
-- Stripe: monthly (SGD 9/month Basic, SGD 12/month Pro) and annual (SGD 144/year) plans
+- Stripe: Free (SGD 0), Pro monthly (SGD 12/month). Annual Plan cancelled.
+- No Basic tier — two tiers only (Free / Pro)
 - Google OAuth as primary login option (lowest friction)
 - Email + SG mobile phone verification as alternative
 - Pro features gated immediately on subscription
 
-### Annual Plan Upgrade Trigger
+### Post-Hire Retention (Future Feature)
 
-**The "Offer Received" moment is the primary Annual Plan conversion trigger.**
-
-When a user logs "Decision: Offer Received" in the outcome tracker:
-1. Show a congratulations interstitial ("You got the job!")
-2. Present Annual Plan prompt: "Stay tracked for your next career move — SGD 144/year"
-3. Include: 1× 30-min career advisor session (SGD 150+ value)
-4. Post-hire tracking: skill gap monitoring, market intelligence, resume refresh
-
-**Why this moment**: Users who just received an offer have the highest purchase intent and clearest understanding of product value. They are also the ideal Annual Plan target — employed, career-aware, willing to invest in tracking.
-
-**Annual Plan is NOT**:
-- A churn-reduction tool (job seekers won't prepay 12 months)
-- A subscription lock-in
-- Marketed as "save money" vs monthly
-
-**Annual Plan IS**:
-- A career ecosystem pass for post-hire tracking
-- Differentiated by the included advisor session
-- Positioned at the celebration moment, not the frustration moment
+**Note**: Annual Plan cancelled. "Offer Received" moment retained as future upsell trigger once post-hire features (career tracking, salary benchmarking) are built in Year 2.
 
 ---
 
@@ -100,24 +100,24 @@ When a user logs "Decision: Offer Received" in the outcome tracker:
 
 These are BLOCKED from implementation until the stated phase. If discovered partially implemented, remove them.
 
-| Feature | Phase |
-|---------|-------|
-| Interview Preparation Module | Phase 2 |
-| Batch mode (5 JDs simultaneously) | Phase 2 |
-| Web Push API notifications | Phase 2 |
-| Calendar ICS export | Phase 2 |
-| Weekly digest email | Pro feature (v1.0 — implement with MVP, SPF/DKIM/DMARC required before launch) |
-| B2B university dashboard | After first university contract signed |
-| Cover letter generation | Never — not SG market priority |
-| LinkedIn profile optimisation | Not confirmed |
-| Salary benchmarking / offer evaluation | Year 2 |
-| Job recommendations (proactive) | Year 2 |
-| Two-sided recruiter platform | Never |
-| Mobile app (iOS/Android) | Phase 3 |
-| Mandarin / Malay UI | Year 2 |
-| Voice interview simulation | Phase 3 |
-| Email parsing integration (Gmail/Outlook OAuth) | Phase 3 |
-| ATS score simulation | Never — not how SG hiring works |
+| Feature                                         | Phase                                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------------------- |
+| Interview Preparation Module                    | Phase 2                                                                   |
+| Batch mode (5 JDs simultaneously)               | Phase 2                                                                   |
+| Web Push API notifications                      | Phase 2                                                                   |
+| Calendar ICS export                             | Phase 2                                                                   |
+| Weekly digest email                             | Phase 2 (requires SPF/DKIM/DMARC infrastructure + email service provider) |
+| B2B university dashboard                        | After first university contract signed                                    |
+| Cover letter generation                         | Never — not SG market priority                                            |
+| LinkedIn profile optimisation                   | Not confirmed                                                             |
+| Salary benchmarking / offer evaluation          | Year 2                                                                    |
+| Job recommendations (proactive)                 | Year 2                                                                    |
+| JD generator for employers/recruiters           | IN MVP v1.0 — see Feature 5                                               |
+| Mobile app (iOS/Android)                        | Phase 3                                                                   |
+| Mandarin / Malay UI                             | Year 2                                                                    |
+| Voice interview simulation                      | Phase 3                                                                   |
+| Email parsing integration (Gmail/Outlook OAuth) | Phase 3                                                                   |
+| ATS score simulation                            | Never — not how SG hiring works                                           |
 
 ---
 
@@ -149,7 +149,7 @@ These are BLOCKED from implementation until the stated phase. If discovered part
 
 ### Commercial
 
-- [ ] Stripe payment accepting SGD (monthly + annual)
+- [ ] Stripe payment accepting SGD (monthly only; annual plan cancelled)
 - [ ] SMS phone verification working (SG +65 numbers)
 - [ ] At least 1 design partner providing written testimonial
 - [ ] Founders able to monitor activation funnel daily (PostHog or equivalent)
@@ -158,10 +158,10 @@ These are BLOCKED from implementation until the stated phase. If discovered part
 
 ## Design Partner Requirements (Pre-Launch)
 
-50–100 design partner users needed before public launch:
+**5–10 deep design partner engagements** before public launch — not 50-100. Focus on genuine activation over volume.
 
-- Source: 2–3 recruitment agency referrals + direct founder network
-- Each partner: full Pro access (6 months free) + 1:1 resume review session
+- Source: Application-based, not broad enrollment. Prioritize referral from existing founder network or warm intros.
+- Each partner: full Pro access (3 months free) + optional 1:1 resume review session
 - Partners must: apply to ≥5 real jobs using KeyStone, agree to outcome tracking consent
-- Target outcomes: 50 users × 5 applications × 35% logging rate = 87 outcome records at launch
-
+- Success criteria (each partner must produce at least ONE): written testimonial, referral call with prospective B2B buyer, case study data, or warm intro to career centre/agency decision-maker
+- Design partner program is a B2B reference asset, NOT a subscription revenue driver. If partners do not produce reference assets within 3 months, do not renew.

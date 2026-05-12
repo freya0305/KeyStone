@@ -313,6 +313,27 @@ async def generate_jd(
     # Rate limit JD generation (AI API calls are expensive)
     check_rate_limit(str(user.b2b_user_id), "jd_generate")
 
+    # Check monthly JD limit enforcement
+    from keystone.models.entities import B2BTenant
+    tenant_result = await db.execute(
+        select(B2BTenant).where(B2BTenant.id == user.tenant_id)
+    )
+    tenant = tenant_result.scalar_one_or_none()
+    if tenant:
+        jd_limit = tenant.jd_limit
+        if jd_limit != -1:  # -1 means unlimited
+            if tenant.jd_generation_count >= jd_limit:
+                logger.warning(
+                    "jd_generate.limit_exceeded",
+                    tenant_id=str(user.tenant_id),
+                    jd_limit=jd_limit,
+                    jd_generation_count=tenant.jd_generation_count,
+                )
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Monthly JD generation limit reached ({jd_limit}/month). Upgrade to Pro for unlimited JDs.",
+                )
+
     client = get_claude_client()
     settings = get_settings()
 
@@ -353,11 +374,11 @@ async def generate_jd(
             "Technology & Software": "technology",
             "Healthcare & Medical": "healthcare",
             "Engineering & Manufacturing": "engineering",
-            "Marketing & Communications": "other",
-            "Sales & Business Development": "other",
-            "Human Resources": "other",
-            "Operations & Logistics": "other",
-            "Legal & Compliance": "other",
+            "Marketing & Communications": "retail_consumer",
+            "Sales & Business Development": "retail_consumer",
+            "Human Resources": "government_public",
+            "Operations & Logistics": "manufacturing",
+            "Legal & Compliance": "banking_finance",
             "Education & Training": "education",
             "Consulting": "consulting",
             "Other": "other",
@@ -427,6 +448,7 @@ Format with these sections: Overview, Responsibilities, Requirements, Nice to Ha
             model=settings.anthropic_model_haiku,
             system_prompt=JD_GENERATION_SYSTEM_PROMPT,
             user_prompt=user_prompt,
+            timeout=15.0,  # JD generation is similar complexity to suggestions
             max_tokens=4096,
         )
     except CircuitBreakerError as e:
@@ -459,6 +481,10 @@ Format with these sections: Overview, Responsibilities, Requirements, Nice to Ha
         generation_source=generation_source,
     )
     db.add(generation_log)
+
+    # Increment JD generation count for monthly limit tracking
+    if tenant:
+        tenant.jd_generation_count += 1
 
     await db.commit()
     await db.refresh(jd)
