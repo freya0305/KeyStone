@@ -66,3 +66,5 @@ secrets/
 **/scripts/data/
 **/scripts/outputs/
 **/scripts/*.log
+
+apps/web/node_modules/*
