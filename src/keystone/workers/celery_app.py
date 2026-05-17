@@ -10,8 +10,8 @@ settings = get_settings()
 
 celery_app = Celery(
     "keystone",
-    broker=f"{settings.redis_url}/0",
-    backend=f"{settings.redis_url}/0",
+    broker=settings.redis_url,
+    backend=settings.redis_url,
 )
 
 celery_app.conf.update(

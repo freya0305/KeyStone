@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     aws_secret_access_key: str
     s3_bucket: str
     aws_region: str = "ap-southeast-1"
+    aws_endpoint_url: str | None = None  # For LocalStack/local development
 
     # Cost control
     llm_cost_ceiling_sgd: float = 5.0  # SGD 5/user/month
@@ -85,6 +86,11 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "jwt_secret must be set and at least 32 characters in production. "
                     "Current value length: " + str(len(self.jwt_secret) if self.jwt_secret else 0)
+                )
+            if not self.twilio_account_sid and not self.twilio_auth_token and not self.twilio_phone_number:
+                raise ValueError(
+                    "Twilio credentials are required for SMS OTP in production. "
+                    "Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER."
                 )
         return self
 

@@ -15,12 +15,15 @@ logger = structlog.get_logger()
 def get_s3_client():
     """Get configured S3 client."""
     settings = get_settings()
-    return boto3.client(
-        "s3",
-        aws_access_key_id=settings.aws_access_key_id,
-        aws_secret_access_key=settings.aws_secret_access_key,
-        region_name=settings.aws_region,
-    )
+    kwargs = {
+        "service_name": "s3",
+        "aws_access_key_id": settings.aws_access_key_id,
+        "aws_secret_access_key": settings.aws_secret_access_key,
+        "region_name": settings.aws_region,
+    }
+    if settings.aws_endpoint_url:
+        kwargs["endpoint_url"] = settings.aws_endpoint_url
+    return boto3.client(**kwargs)
 
 
 def get_resume_bucket() -> str:

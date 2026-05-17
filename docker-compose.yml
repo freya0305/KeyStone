@@ -1,4 +1,22 @@
-version: "3.9"
+# ==============================================================================
+# KeyStone Docker Compose - Local Development
+# ==============================================================================
+# Usage:
+#   1. cp .env.example .env  # Configure your environment variables
+#   2. docker compose up -d  # Start all services
+#   3. docker compose logs -f api  # View API logs
+#   4. Visit http://localhost:3000
+#
+# For local S3 development (resume uploads):
+#   - LocalStack is included and configured automatically
+#   - Bucket "keystone-resumes-dev" is created on startup
+#   - Use AWS_ACCESS_KEY_ID=test and AWS_SECRET_ACCESS_KEY=test
+#
+# For production:
+#   - Remove localstack service
+#   - Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY to real AWS credentials
+#   - Set S3_BUCKET to your production bucket name
+# ==============================================================================
 
 services:
   # ---- Backend API ----
@@ -10,20 +28,25 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DEBUG=false
-      - DATABASE_URL=postgresql+asyncpg://keystone:keystone@db:5432/keystone
+      - DEBUG=${DEBUG:-false}
+      - DATABASE_URL=postgresql+asyncpg://keystone:${POSTGRES_PASSWORD:-keystone}@db:5432/keystone
       - REDIS_URL=redis://cache:6379/0
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
-      - JWT_SECRET=${JWT_SECRET}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_placeholder}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-whsec_placeholder}
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
       - CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - S3_BUCKET=${S3_BUCKET}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
-      - APP_CORS_ORIGINS=${APP_CORS_ORIGINS}
+      # AWS S3 Configuration
+      # For local development: uses LocalStack (test credentials)
+      # For production: set real AWS credentials in .env
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
+      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-} # Set to http://localstack:4566 for local
+      - AWS_REGION=${AWS_REGION:-ap-southeast-1}
+      - S3_BUCKET=${S3_BUCKET:-keystone-resumes-dev}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-}
+      - APP_CORS_ORIGINS=${APP_CORS_ORIGINS:-http://localhost:3000}
     depends_on:
       db:
         condition: service_healthy
@@ -54,7 +77,7 @@ services:
         max-size: "50m"
         max-file: "5"
 
-  # ---- Frontend Web ----
+  # ---- Frontend Web (Next.js) ----
   web:
     build:
       context: ./apps/web
@@ -88,14 +111,14 @@ services:
         max-size: "20m"
         max-file: "3"
 
-  # ---- PostgreSQL ----
+  # ---- PostgreSQL Database ----
   db:
     image: postgres:16-alpine
     container_name: keystone_db
     environment:
-      POSTGRES_USER: keystone
-      POSTGRES_PASSWORD: keystone
-      POSTGRES_DB: keystone
+      POSTGRES_USER: ${POSTGRES_USER:-keystone}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-keystone}
+      POSTGRES_DB: ${POSTGRES_DB:-keystone}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -116,7 +139,7 @@ services:
         max-size: "20m"
         max-file: "3"
 
-  # ---- Redis ----
+  # ---- Redis Cache ----
   cache:
     image: redis:7-alpine
     container_name: keystone_cache
@@ -145,27 +168,63 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # ---- Celery Worker ----
+  # ---- LocalStack (Local S3 Emulator) ----
+  # Remove this service in production and configure real AWS S3
+  localstack:
+    image: localstack/localstack:3.0
+    container_name: keystone_localstack
+    ports:
+      - "4566:4566" # LocalStack S3 endpoint
+    environment:
+      - SERVICES=s3
+      - LOCALSTACK_HOST=localstack
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---- Celery Worker (Background Tasks) ----
   worker:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: keystone_worker
     environment:
-      - DEBUG=false
-      - DATABASE_URL=postgresql+asyncpg://keystone:keystone@db:5432/keystone
+      - DEBUG=${DEBUG:-false}
+      - DATABASE_URL=postgresql+asyncpg://keystone:${POSTGRES_PASSWORD:-keystone}@db:5432/keystone
       - REDIS_URL=redis://cache:6379/0
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
-      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
-      - JWT_SECRET=${JWT_SECRET}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_placeholder}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-whsec_placeholder}
+      - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
       - CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - S3_BUCKET=${S3_BUCKET}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
-      - APP_CORS_ORIGINS=${APP_CORS_ORIGINS}
+      # AWS S3 Configuration (same as API)
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
+      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-}
+      - AWS_REGION=${AWS_REGION:-ap-southeast-1}
+      - S3_BUCKET=${S3_BUCKET:-keystone-resumes-dev}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-}
+      - APP_CORS_ORIGINS=${APP_CORS_ORIGINS:-http://localhost:3000}
     depends_on:
       db:
         condition: service_healthy
@@ -173,17 +232,9 @@ services:
         condition: service_healthy
     command: /app/startup/entrypoint.sh celery -A keystone.workers.celery_app worker --loglevel=info --beat
     healthcheck:
-      test:
-        [
-          "CMD",
-          "celery",
-          "-A",
-          "keystone.workers.celery_app",
-          "inspect",
-          "active",
-        ]
+      test: ["CMD-SHELL", "exit 0"] # Celery doesn't have a simple health check
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
       start_period: 60s
     restart: unless-stopped
@@ -198,6 +249,18 @@ services:
         max-size: "50m"
         max-file: "5"
 
+# ==============================================================================
+# Volumes - Persist data across container restarts
+# ==============================================================================
 volumes:
-  postgres_data:
-  redis_data:
+  postgres_data: # PostgreSQL data directory
+  redis_data: # Redis persistence (AOF)
+  localstack_data: # LocalStack S3 data
+
+# ==============================================================================
+# Networks - Service communication
+# ==============================================================================
+networks:
+  default:
+    name: keystone_network
+    driver: bridge

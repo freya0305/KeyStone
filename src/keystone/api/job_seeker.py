@@ -17,7 +17,7 @@ from typing import Literal, Optional, AsyncGenerator
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request, Cookie, BackgroundTasks, Header
 from fastapi.responses import StreamingResponse, Response
-from pydantic import BaseModel, Field, FieldValidationInfo
+from pydantic import BaseModel, Field, ValidationInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 

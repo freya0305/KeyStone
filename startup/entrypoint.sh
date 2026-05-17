@@ -7,8 +7,5 @@ until pg_isready -h db -p 5432 -U keystone; do
     sleep 1
 done
 
-echo "PostgreSQL is ready! Running migrations..."
-alembic upgrade head
-
-echo "Migrations complete. Starting service: $@"
-exec "$@"
+echo "PostgreSQL is ready! Starting service with uv run..."
+exec uv run "$@"

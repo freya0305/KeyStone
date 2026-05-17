@@ -1,83 +1,84 @@
-"use client"
+'use client';
 
-import { useState, useEffect, useCallback } from 'react'
-import { apiRequest } from '@/lib/api'
+import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+import { apiRequest } from '@/lib/api';
 
 interface Template {
-  id: string
-  name: string
-  logo_s3_key: string | null
-  brand_primary_color: string
-  brand_secondary_color: string
-  font_choice: string
-  created_at: string
+  id: string;
+  name: string;
+  logo_s3_key: string | null;
+  brand_primary_color: string;
+  brand_secondary_color: string;
+  font_choice: string;
+  created_at: string;
 }
 
 interface CreateTemplateRequest {
-  name: string
-  logo_s3_key?: string
-  brand_primary_color: string
-  brand_secondary_color: string
-  font_choice: string
+  name: string;
+  logo_s3_key?: string;
+  brand_primary_color: string;
+  brand_secondary_color: string;
+  font_choice: string;
 }
 
 export default function TemplatesPage() {
-  const [templates, setTemplates] = useState<Template[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showCreate, setShowCreate] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [newTemplate, setNewTemplate] = useState<CreateTemplateRequest>({
     name: '',
     brand_primary_color: '#4F46E5',
     brand_secondary_color: '#6B7280',
     font_choice: 'Inter',
-  })
+  });
 
   const loadTemplates = useCallback(() => {
     apiRequest<Template[]>('/recruiter/templates')
       .then(setTemplates)
       .catch(() => setTemplates([]))
-      .finally(() => setLoading(false))
-  }, [])
+      .finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => {
-    loadTemplates()
-  }, [loadTemplates])
+    loadTemplates();
+  }, [loadTemplates]);
 
   const handleCreate = async () => {
-    if (!newTemplate.name.trim()) return
-    setCreating(true)
-    setError(null)
+    if (!newTemplate.name.trim()) return;
+    setCreating(true);
+    setError(null);
     try {
       await apiRequest<Template>('/recruiter/templates', {
         method: 'POST',
         body: newTemplate,
-      })
-      setShowCreate(false)
+      });
+      setShowCreate(false);
       setNewTemplate({
         name: '',
         brand_primary_color: '#4F46E5',
         brand_secondary_color: '#6B7280',
         font_choice: 'Inter',
-      })
-      loadTemplates()
+      });
+      loadTemplates();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create template')
+      setError(err instanceof Error ? err.message : 'Failed to create template');
     } finally {
-      setCreating(false)
+      setCreating(false);
     }
-  }
+  };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this template?')) return
+    if (!confirm('Delete this template?')) return;
     try {
-      await apiRequest(`/recruiter/templates/${id}`, { method: 'DELETE' })
-      setTemplates(prev => prev.filter(t => t.id !== id))
+      await apiRequest(`/recruiter/templates/${id}`, { method: 'DELETE' });
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
     } catch {
-      setError('Failed to delete template')
+      setError('Failed to delete template');
     }
-  }
+  };
 
   return (
     <div className="space-y-6">
@@ -108,46 +109,60 @@ export default function TemplatesPage() {
             <h2 className="text-lg font-semibold mb-4">Create Template</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Template Name</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Template Name
+                </label>
                 <input
                   type="text"
                   value={newTemplate.name}
-                  onChange={e => setNewTemplate(t => ({ ...t, name: e.target.value }))}
+                  onChange={(e) => setNewTemplate((t) => ({ ...t, name: e.target.value }))}
                   placeholder="e.g. Engineering - Singapore"
                   className="w-full px-3 py-2 border rounded-lg"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Primary Color</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Primary Color
+                  </label>
                   <div className="flex gap-2">
                     <input
                       type="color"
                       value={newTemplate.brand_primary_color}
-                      onChange={e => setNewTemplate(t => ({ ...t, brand_primary_color: e.target.value }))}
+                      onChange={(e) =>
+                        setNewTemplate((t) => ({ ...t, brand_primary_color: e.target.value }))
+                      }
                       className="w-10 h-10 rounded border cursor-pointer"
                     />
                     <input
                       type="text"
                       value={newTemplate.brand_primary_color}
-                      onChange={e => setNewTemplate(t => ({ ...t, brand_primary_color: e.target.value }))}
+                      onChange={(e) =>
+                        setNewTemplate((t) => ({ ...t, brand_primary_color: e.target.value }))
+                      }
                       className="flex-1 px-3 py-2 border rounded-lg text-sm font-mono"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Secondary Color</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Secondary Color
+                  </label>
                   <div className="flex gap-2">
                     <input
                       type="color"
                       value={newTemplate.brand_secondary_color}
-                      onChange={e => setNewTemplate(t => ({ ...t, brand_secondary_color: e.target.value }))}
+                      onChange={(e) =>
+                        setNewTemplate((t) => ({ ...t, brand_secondary_color: e.target.value }))
+                      }
                       className="w-10 h-10 rounded border cursor-pointer"
                     />
                     <input
                       type="text"
                       value={newTemplate.brand_secondary_color}
-                      onChange={e => setNewTemplate(t => ({ ...t, brand_secondary_color: e.target.value }))}
+                      onChange={(e) =>
+                        setNewTemplate((t) => ({ ...t, brand_secondary_color: e.target.value }))
+                      }
                       className="flex-1 px-3 py-2 border rounded-lg text-sm font-mono"
                     />
                   </div>
@@ -157,7 +172,7 @@ export default function TemplatesPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Font</label>
                 <select
                   value={newTemplate.font_choice}
-                  onChange={e => setNewTemplate(t => ({ ...t, font_choice: e.target.value }))}
+                  onChange={(e) => setNewTemplate((t) => ({ ...t, font_choice: e.target.value }))}
                   className="w-full px-3 py-2 border rounded-lg"
                 >
                   <option value="Inter">Inter</option>
@@ -192,8 +207,11 @@ export default function TemplatesPage() {
       {/* Templates Grid */}
       {!loading && templates.length > 0 && (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {templates.map(template => (
-            <div key={template.id} className="bg-white border rounded-xl p-5 hover:border-purple-300 transition-colors">
+          {templates.map((template) => (
+            <div
+              key={template.id}
+              className="bg-white border rounded-xl p-5 hover:border-purple-300 transition-colors"
+            >
               <div className="flex items-start justify-between mb-3">
                 <h3 className="font-semibold text-gray-900">{template.name}</h3>
                 <div className="flex gap-2">
@@ -209,9 +227,7 @@ export default function TemplatesPage() {
                   />
                 </div>
               </div>
-              <div className="text-xs text-gray-500 mb-4">
-                Font: {template.font_choice}
-              </div>
+              <div className="text-xs text-gray-500 mb-4">Font: {template.font_choice}</div>
               <div className="flex items-center justify-between pt-3 border-t">
                 <span className="text-xs text-gray-500">
                   {new Date(template.created_at).toLocaleDateString('en-SG', {
@@ -257,5 +273,5 @@ export default function TemplatesPage() {
         </div>
       )}
     </div>
-  )
+  );
 }
